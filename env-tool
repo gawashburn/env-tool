@@ -1,0 +1,1492 @@
+#!/bin/sh
+exec perl -S -x -- "$0" "$@"
+#!perl -w
+# -*- perl -*-
+# vim:ft=perl:
+
+# env-tool $Id: env-tool 1039 2005-07-19 14:27:10Z geoffw $
+# Copyright Geoffrey Alan Washburn, 2005.
+# Some parts copyright Trustees of Boston University, 2002.
+# Some parts copyright Joe B Wells, 2002.
+# 
+# You can redistribute and/or modify this software under the terms of
+# the GNU General Public License as published by the Free Software
+# Foundation; either version 2, or (at your option) any later version.
+# 
+# This software is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You may obtain the GNU General Public License by writing to the Free
+# Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+
+
+use English;
+
+use strict;
+
+# I have tested that XML::Parser::Lite works with Perl versions as old
+# as 5.005_03.
+
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# begin: require XML::Parser::Lite;
+# file: /usr/local/lib/perl5/site_perl/5.6.1/XML/Parser/Lite.pm
+# Remember to delete __END__ and everything after it.
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# ======================================================================
+#
+# Copyright (C) 2000-2001 Paul Kulchenko (paulclinger@yahoo.com)
+# SOAP::Lite is free software; you can redistribute it
+# and/or modify it under the same terms as Perl itself.
+#
+# ======================================================================
+
+package XML::Parser::Lite;
+
+use strict;
+use vars qw($VERSION);
+$VERSION = '0.20';
+
+sub new { 
+  my $self = shift;
+  my $class = ref($self) || $self;
+  return $self if ref $self;
+
+  $self = bless {} => $class;
+  my %parameters = @_;
+  $self->setHandlers(); # clear first 
+  $self->setHandlers(%{$parameters{Handlers} || {}});
+  return $self;
+}
+
+sub setHandlers {
+  my $self = shift; 
+  no strict 'refs'; local $^W;
+  # clear all handlers if called without parameters
+  unless (@_) { foreach (qw(Start End Char Final Init)) { *$_ = sub {} } }
+  while (@_) { my($name => $func) = splice(@_, 0, 2); *$name = $func }
+  return $self;
+}
+
+sub regexp {
+  my $patch = shift || '';
+  my $package = __PACKAGE__;
+
+  # This parser is based on "shallow parser" http://www.cs.sfu.ca/~cameron/REX.html 
+
+  # Robert D. Cameron "REX: XML Shallow Parsing with Regular Expressions",
+  # Technical Report TR 1998-17, School of Computing Science, Simon Fraser University, November, 1998.
+  # Copyright (c) 1998, Robert D. Cameron. 
+  # The following code may be freely used and distributed provided that
+  # this copyright and citation notice remains intact and that modifications
+  # or additions are clearly identified.
+
+  my $TextSE = "[^<]+";
+  my $UntilHyphen = "[^-]*-";
+  my $Until2Hyphens = "$UntilHyphen(?:[^-]$UntilHyphen)*-";
+  my $CommentCE = "$Until2Hyphens>?";
+  my $UntilRSBs = "[^\\]]*](?:[^\\]]+])*]+";
+  my $CDATA_CE = "$UntilRSBs(?:[^\\]>]$UntilRSBs)*>";
+  my $S = "[ \\n\\t\\r]+";
+  my $NameStrt = "[A-Za-z_:]|[^\\x00-\\x7F]";
+  my $NameChar = "[A-Za-z0-9_:.-]|[^\\x00-\\x7F]";
+  my $Name = "(?:$NameStrt)(?:$NameChar)*";
+  my $QuoteSE = "\"[^\"]*\"|'[^']*'";
+  my $DT_IdentSE = "$S$Name(?:$S(?:$Name|$QuoteSE))*";
+  my $MarkupDeclCE = "(?:[^\\]\"'><]+|$QuoteSE)*>";
+  my $S1 = "[\\n\\r\\t ]";
+  my $UntilQMs = "[^?]*\\?+";
+  my $PI_Tail = "\\?>|$S1$UntilQMs(?:[^>?]$UntilQMs)*>";
+  my $DT_ItemSE = "<(?:!(?:--$Until2Hyphens>|[^-]$MarkupDeclCE)|\\?$Name(?:$PI_Tail))|%$Name;|$S";
+  my $DocTypeCE = "$DT_IdentSE(?:$S)?(?:\\[(?:$DT_ItemSE)*](?:$S)?)?>?";
+  my $DeclCE = "--(?:$CommentCE)?|\\[CDATA\\[(?:$CDATA_CE)?|DOCTYPE(?:$DocTypeCE)?";
+  my $PI_CE = "$Name(?:$PI_Tail)?";
+
+  # these expressions were modified for backtracking and events
+  my $EndTagCE = "($Name)(?{${package}::end(\$2)})(?:$S)?>";
+  my $AttValSE = "\"([^<\"]*)\"|'([^<']*)'";
+  my $ElemTagCE = "($Name)(?:$S($Name)(?:$S)?=(?:$S)?(?:$AttValSE)(?{[\@{\$^R||[]},\$4=>defined\$5?\$5:\$6]}))*(?:$S)?(/)?>(?{${package}::start(\$3,\@{\$^R||[]})})(?{\${7} and ${package}::end(\$3)})";
+  my $MarkupSPE = "<(?:!(?:$DeclCE)?|\\?(?:$PI_CE)?|/(?:$EndTagCE)?|(?:$ElemTagCE)?)";
+
+  # Next expression is under "black magic".
+  # Ideally it should be '($TextSE)(?{${package}::char(\$1)})|$MarkupSPE',
+  # but it doesn't work under Perl 5.005 and only magic with
+  # (?:....)?? solved the problem. 
+  # I would appreciate if someone let me know what is the right thing to do 
+  # and what's the reason for all this magic. 
+  # Seems like a problem related to (?:....)? rather than to ?{} feature.
+  # Tests are in t/31-xmlparserlite.t if you decide to play with it.
+  "(?:($TextSE)(?{${package}::char(\$1)}))$patch|$MarkupSPE";
+}
+
+sub compile { local $^W; 
+  # try regexp as it should be, apply patch if doesn't work
+  foreach (regexp(), regexp('??')) {
+    eval qq{sub parse_re { use re "eval"; 1 while \$_[0] =~ m{$_}go }; 1} or die;
+    last if eval { parse_re('<foo>bar</foo>'); 1 }
+  };
+
+  *compile = sub {};
+}
+
+setHandlers();
+compile();
+
+sub parse { 
+  init(); 
+  parse_re($_[1]);
+  final(); 
+}
+
+my(@stack, $level);
+
+sub init { 
+  @stack = (); $level = 0;
+  Init(__PACKAGE__, @_);  
+}
+
+sub final { 
+  die "not properly closed tag '$stack[-1]'\n" if @stack;
+  die "no element found\n" unless $level;
+  Final(__PACKAGE__, @_) 
+} 
+
+sub start { 
+  die "multiple roots, wrong element '$_[0]'\n" if $level++ && !@stack;
+  push(@stack, $_[0]);
+  Start(__PACKAGE__, @_); 
+}
+
+sub char { 
+  Char(__PACKAGE__, $_[0]), return if @stack;
+
+  # check for junk before or after element
+  # can't use split or regexp due to limitations in ?{} implementation, 
+  # will iterate with loop, but we'll do it no more than two times, so
+  # it shouldn't affect performance
+  for (my $i=0; $i < length $_[0]; $i++) {
+    die "junk '$_[0]' @{[$level ? 'after' : 'before']} XML element\n"
+      if index("\n\r\t ", substr($_[0],$i,1)) < 0; # or should '< $[' be there
+  }
+}
+
+sub end { 
+  pop(@stack) eq $_[0] or die "mismatched tag '$_[0]'\n";
+  End(__PACKAGE__, $_[0]);
+}
+
+# ======================================================================
+
+1;
+
+$main::INC{'XML/Parser/Lite.pm'} = 1;
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#end: require XML::Parser::Lite;
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+package main; # restore normality
+
+##############################################################################
+##############################################################################
+##############################################################################
+
+# Use find to search for configuration files
+use File::Find ();
+
+# Use Getopt::Long to parse command-line arguments
+use Getopt::Long;
+
+# Need to be able to obtain the current directory to set variables
+use Cwd;
+
+##############################################################################
+
+# List of TEXINPUTS like environment variables
+# *** Whether a variable to be extended is one of the variables
+# handled by the kpathsea environment should be specified in the
+# .env-config files, not here.
+my @TEXINPUTS_like = ("TEXINPUTS",
+                      "DVIPSHEADERS",
+                      "BSTINPUTS",
+                      "BIBINPUTS",
+                      "AFMFONTS",
+                      "MFBASES",
+                      "TEXBIB",
+                      "TEXCONFIG",
+                      "TEXFORMATS",
+                      "TEXINDEXSTYLE",
+                      "TEXFONTMAPS",
+                      "MFINPUTS",
+                      "TEXFONTS",
+                      "T1FONTS",
+                      "TTFONTS",
+                      "VFFONTS",
+                      "XDVIFONTS",
+                      "GLYPHFONTS",
+                      "ENCFONTS",
+                      "TEXPSHEADERS");
+
+# What is our sml-cm called?  Should make this a command-line option
+my $sml_cm = "sml-cm";
+
+# Keep a hash of what the "default" environment for variables
+# should be if they are not set in the environment
+my %default_environment = ();
+
+# Hash the environment variables we are extending
+my %environment = ();
+
+# Hash the aliases we might create
+my %aliases = ();
+
+# Need the two follwing global variables due to stange locality issues.
+
+# Does the user have sml-cm in their path
+my $cm_exists = undef;
+# What was the CM_PATH returned by sml-cm (if it exists)
+my @cm_path = ();
+
+##############################################################################
+# Obscure SML Compilation manager stuff
+
+# Return 1 if sml-cm exists in our search path, otherwise 0
+sub sml_cm_exists () {
+  my @path = split(/:/, $ENV{PATH});
+
+  # For each entry in our PATH
+  for(@path) {
+    # Does $sml_cm exist and is executable in this directory?
+    if(-x "$_/$sml_cm" && -f "$_/$sml_cm") {
+        return 1;
+    }
+  }
+  return 0;
+}
+
+# If we checked that sml-cm is in our path, we can return an array
+# of directories to include in CM_PATH
+sub obtain_cm_path () {
+  # Evil hack to execute sml-cm and get the output back
+  # First save the current CM_PATH
+  my $path_tmp = undef;
+  my $path_tmp_needed = 0;
+  if(exists $ENV{CM_PATH}) {
+    $path_tmp = $ENV{CM_PATH};
+    delete $ENV{CM_PATH};
+    $path_tmp_needed = 1;
+  }
+  # Delete it so that it is clear when we run $sml_cm
+
+  my $output = `echo "CM.set_path NONE;" |  $sml_cm`;
+  # Restore the CM_PATH;
+  if($path_tmp_needed) {
+    $ENV{CM_PATH} = $path_tmp;
+  }
+  # The output is expected to look like this (with no trailing newline):
+  #   Standard ML of New Jersey, Version 110.0.7, September 28, 2000 [CM; autoload enabled]
+  #   - val it = [".","/usr/share/smlnj/lib"] : string list
+  #   -
+  # Extract out the interesting bit
+  $output =~ s/(.*)= \[(.*)\](.*):(.*)/$2/gs;
+  # Clean it up some
+  # for split did not have grouping parentheses.
+  my @processed = split(/^\"|\"$|\"\,\"/, $output);
+  # (By default split will return a leading empty field.  Not sure how
+  # to turn this off.)
+  shift @processed;
+  return @processed;
+}
+
+##############################################################################
+# Extend the aliases we are collecting.
+sub extend_aliases ($$) {
+  my $name = shift(@_);
+  if ((length $name) <= 0) {
+    die "extend_aliases: invalid name argument!";
+  }
+  my $value = shift(@_);
+  if ((length $value) <= 0) {
+    die "extend_aliases: invalid value argument for alias name $name!";
+  }
+  # Check to see whether there is an entry yet
+  if (!(exists $aliases{$name})) {
+    # Nope, initialize to empty list.
+    $aliases{$name} = ($value);
+  }
+        
+  my @current_mapping = $aliases{$name};
+  push @current_mapping, $value;
+}  
+
+##############################################################################
+# Extend the new environment we are building.
+sub extend_env ($$$) {
+
+  my $variable = shift(@_);
+  # Check that it is a valid variable name
+  if ((length $variable) <= 0) {
+    die "extend_env: invalid variable argument!";
+  }
+  my $dir = shift(@_);
+  # Check that it is really a directory
+  if(!(-d $dir)) {
+    die "extend_env: invalid directory argument for variable $variable!"
+  }
+  my $text = shift(@_);
+
+  # If the variable doesn't exist in the hash yet, set it to the empty list
+  if(!(exists $environment{$variable})) {
+    $environment{$variable} = [];
+  }
+
+  my $separator = undef;
+  if(!(defined $dir)) {
+    $dir = "";
+    $separator = "";
+  } else {
+    $separator = "/";
+  }
+
+  # If it is a TEXINPUTS-like variable we want to check if it is a //
+  if(grep($variable, @TEXINPUTS_like)) {
+    if(defined $text) {
+      if($text eq "//") {
+        push @{$environment{$variable}}, ($dir.$text);
+      } else {
+        push @{$environment{$variable}}, ($dir.$separator.$text);
+      }
+    } else {
+      push @{$environment{$variable}}, ($dir);
+    }
+  } else {
+    if(defined $text) {
+      push @{$environment{$variable}}, ($dir.$separator.$text);
+    } else {
+      push @{$environment{$variable}}, ($dir);
+    }
+  }
+}
+
+##############################################################################
+
+# Code to process a environment configuration file
+sub process_config ($$) {
+  my $dir = shift(@_);
+  # Check that it is actually a directory
+  if(!(-d $dir)) {
+    die "process_config: directory argument \"$dir\" is not a directory!";
+  }
+  my $xml = shift(@_);
+  my @path = ();
+  my $current_variable = undef;
+  my $current_alias_name = undef;
+  my $current_alias_value = undef;
+  my $parser = new XML::Parser::Lite;
+
+  # Create a set of handler routines for XML::Parser::Lite
+  $parser->setHandlers
+    (
+     Start => sub {
+       shift;
+       my $element = shift;
+       my %attr = @_;
+       # If we are looking at an env-config element
+       if($element eq "env-config") {
+
+         # Make sure there is a version attribute
+         if(!(exists $attr{version})) {
+           die "env-config file is missing a version attribute.\n";
+         }
+         # Make sure that we understand this version
+         if($attr{version} ne "1.1") {
+           die "Attemping to use an incorrect version of env-tool ($attr{version} versus 1.1)!\n";
+         }
+       }
+
+       # If we are looking at a variable element
+       if($element eq "variable") {
+         # Make sure we are structured properly
+         my $parent = pop @path;
+         if($parent ne "env-config") {
+           die "variable element not underneath an env-config element.\n";
+         } else {
+           push @path, $parent;
+         }
+         $current_variable = $attr{name};
+       }
+       
+       # If we are looking at a alias element
+       if($element eq "alias") {
+         # Make sure we are structured properly
+         my $parent = pop @path;
+         if($parent ne "env-config") {
+           die "alias element not underneath an env-config element.\n";
+         } else {
+           push @path, $parent;
+         }
+         $current_alias_name = $attr{name};
+         $current_alias_value = $attr{value};
+       }
+       
+       # If we are looking at a relative alias element
+       if($element eq "relative-alias") {
+         # Make sure we are structured properly
+         my $parent = pop @path;
+         if($parent ne "env-config") {
+           die "relative-alias element not underneath an env-config element.\n";
+         } else {
+           push @path, $parent;
+         }
+         $current_alias_name = $attr{name};
+       }
+
+       # If we are looking at a variable element
+       if($element eq "absolute-variable") {
+         # Make sure we are structured properly
+         my $parent = pop @path;
+         if($parent ne "env-config") {
+           die "absolute-variable element not underneath an env-config element.\n";
+         } else {
+           push @path, $parent;
+         }
+         $current_variable = $attr{name};
+       }
+
+       # If we are looking at a variable element
+       if($element eq "kpathsea-variable") {
+         # Make sure we are structured properly
+         my $parent = pop @path;
+         if($parent ne "env-config") {
+           die "kapthsea-variable element not underneath an env-config element.\n";
+         } else {
+           push @path, $parent;
+         }
+         $current_variable = $attr{name};
+         if(grep($current_variable, @TEXINPUTS_like)) {
+           push @TEXINPUTS_like, $current_variable;
+         }
+       }
+
+       push @path, $element;
+     },
+
+     Char => sub {
+       shift;
+       my $text = "@_";
+
+       my $parent = pop @path;
+       push @path, $parent;
+
+       if((defined $current_variable) && ($parent eq "variable")) {
+         &extend_env($current_variable, $dir, $text);
+         undef $current_variable;
+       } elsif((defined $current_alias_name) && 
+               ($parent eq "relative-alias")) {
+         &extend_aliases($current_alias_name, $dir.$text);
+         undef $current_alias_name;
+       } elsif((defined $current_variable) && 
+               ($parent eq "kpathsea-variable")) {
+         &extend_env($current_variable, $dir, $text);
+         undef $current_variable;
+       } elsif((defined $current_variable) && 
+               ($parent eq "absolute-variable")) {
+         &extend_env($current_variable, undef, $text);
+         undef $current_variable;
+       } elsif(defined $current_variable) {
+         die "character data in an improper location.\n";
+       }
+     },
+
+     End => sub {
+       shift;
+       my $element = shift;
+
+       my $parent = pop @path;
+       if($element ne $parent) {
+         die "Somehow hit a mismatched tag.\n";
+       }
+
+       if($element eq "variable") {
+         if(defined $current_variable) {
+           &extend_env($current_variable, $dir, undef);
+           undef $current_variable;
+         }
+       }
+       
+       if($element eq "relative-alias") {
+         if(defined $current_alias_name) {
+           die "relative-alias element was empty.\n"
+         }
+       }
+       
+       if($element eq "alias") {
+         if(defined $current_alias_name) {
+           &extend_aliases($current_alias_name, $current_alias_value);
+           undef $current_alias_name;
+           undef $current_alias_value;
+         }
+       }
+
+       if($element eq "kpathsea-variable") {
+         if(defined $current_variable) {
+           &extend_env($current_variable, $dir, undef);
+           undef $current_variable;
+         }
+       }
+
+       if($element eq "absolute-variable") {
+         if(defined $current_variable) {
+           die "absolute-variable element was empty.\n"
+         }
+       }
+     },
+    );
+
+  # Parse the configuation file
+  $parser->parse($xml);
+
+}
+
+##############################################################################
+
+# Print the usage information
+sub print_usage () {
+  print <<END;
+Usage: env-tool [-h|--help] [--sh] [--csh] [--zsh] [--ignores re]
+                [--lock] [--bg|--condbg] [--safe] [--debug] 
+                [--test] [directories ...]
+
+Scan the specified directories and their children for environment
+configuation files, and atomically create ~/.env-tool.sh, ~/.env-tool.csh,
+and ~/.env-tool.zsh files as specified.  If no directories are specified
+scan the current directory.
+
+    -h, --help         print this message
+    
+        --sh           only create ~/.env-tool.sh, a script for 
+                       Bourne descended shells
+                      
+        --csh          only create ~/.env-tool.csh, a script for 
+                       C-Shell descended shells
+                      
+        --zsh          only create ~/.env-tool.zsh, a script for 
+                       optimized for Z-Shell
+        
+        --ignores re   prune the specified regular expression from
+                       the search.  May be used any number of times.
+
+        --lock         force locking so that only one instance can
+                       operate at a time
+                      
+        --bg           run in the background. Only one instance of 
+                       env-tool may run at a time if --lock is used
+                      
+        --condbg       run in the background if ~/.env-tool.sh or 
+                       ~/.env-tool.csh already exist. Only one 
+                       instance of env-tool may run at a time
+                       if --lock is used
+                      
+        --safe         produce shell scripts that attempt to not 
+                       disturb the user's existing configuration
+                      
+        --debug        output shell code that describes what 
+                       it is doing
+                      
+        --test         run but do not write output to a file. 
+
+Try `perldoc env-tool' for more information.
+END
+  exit 0;
+}
+
+##############################################################################
+
+# Utility function to define the default environment
+sub init_default_environment () {
+  # TEXINPUTS-like variables should have the empty-string as an 
+  # entry
+  for(@TEXINPUTS_like) {
+    $default_environment{$_} = [""]
+  }
+
+  # If we are going to extend CM_PATH or overwrite CM_PATH we should
+  # use this
+  $default_environment{CM_PATH} = [@cm_path];
+}
+
+##############################################################################
+### Shell specific code #####
+
+##############################################################################
+### Bourne shell #####
+
+sub gen_prologue_sh () {
+  return "";
+}
+
+sub gen_epilogue_sh () {
+  return "";
+}
+
+sub gen_cond_alias_sh ($$$) {
+  # Don't need to validate any of the inputs because gen_cond_alias has 
+  # already done it for us.
+  my $name = shift @_;
+  my $value = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "alias $name=$value\n";
+  if($debug) {
+    $result .="echo \"env-tool: aliasing $name with $value\"\n";
+  }
+
+  return $result;
+}
+
+sub gen_cond_var_sh ($$$$$) {
+  # Don't need to validate any of the inputs because gen_cond_var has 
+  # already done it for us.
+  my $variable = shift @_;
+  my $additions_array = shift @_;
+  my $default = shift @_;
+  my $safe = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "case \"x\${$variable:-y}\" in\n  xy)";
+  $result .= " export $variable='$default'";
+  if($debug) {
+    $result .="\n    echo \"env-tool: setting $variable with $default\"";
+  }
+  $result .=";;\n  *)\n";
+    
+  for(@$additions_array) {
+    $result .="    case \"\$$variable\" in\n      '$_') ;;\n      *:'$_') ;; \n      '$_':*) ;;\n      *:'$_':*) ;;\n      *)";
+    if($safe) {
+      $result .=" export $variable=\"\$$variable:$_\"";
+    } else {
+      $result .=" export $variable=\"$_:\$$variable\"";
+    }
+    if($debug) {
+      $result .="\n    echo \"env-tool: extending $variable with $_\"";
+    }
+    $result .=";;\n    esac\n";
+  }
+  $result .= ";;\nesac\n";
+  
+  return $result;
+}
+
+##############################################################################
+### C-shell ######
+
+sub gen_prologue_csh () {
+  return "";
+}
+
+sub gen_epilogue_csh () {
+  return "";
+}
+
+sub gen_cond_alias_csh ($$$) {
+  # Don't need to validate any of the inputs because gen_cond_alias has 
+  # already done it for us.
+  my $name = shift @_;
+  my $value = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .="alias $name $value\n";
+  if($debug) {
+    $result .= "echo \"env-tool: aliasing $name with $value\"\n";
+  }
+
+  return $result;
+}
+
+sub gen_cond_var_csh ($$$$$) {
+  # Don't need to validate any of the inputs because gen_cond_var has 
+  # already done it for us.
+  my $variable = shift @_;
+  my $additions_array = shift @_;
+  my $default = shift @_;
+  my $safe = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .="if (\$?$variable) then\n";
+  for(@$additions_array) {
+    $result .= "  if (! ((\"\$$variable\" =~ *:'$_') || (\"\$$variable\" =~ '$_':*) || (\"\$$variable\" =~ *:'$_':*) || (\"\$$variable\" =~ '$_'))) then\n";
+    if($safe) {  
+      $result .="    setenv $variable \"\$$variable\"':$_';\n";
+    } else {
+      $result .="    setenv $variable '$_:'\"\$$variable\";\n";
+    } 
+    if($debug) {
+       $result .="    echo \"env-tool: extending $variable with $_\"\n";
+    }
+    $result .="  endif\n";
+  }
+  $result .="else\n  setenv $variable '$default';\n";
+  if($debug) {
+    $result .="    echo \"env-tool: setting $variable with $_\"\n";
+  }
+  $result .="endif\n";
+
+  return $result;
+}
+
+
+##############################################################################
+### Z shell ######
+
+sub gen_prologue_zsh () {
+
+my $result=<<END;
+\# Helper function
+extend_env() {
+case "\${(P)1}" in
+  "\$2") ;;
+  *:"\$2") ;;
+  "\$2":*) ;;
+  *:"\$2":*) ;;
+  *) if \$4; then
+       echo "env-tool: extending \$1 with \$2"
+     fi 
+     if \$3; then
+       export \$1="\${(P)1}:\$2"
+     else 
+       export \$1="\$2:\${(P)1}"
+     fi;;
+esac
+}
+
+END
+
+  return $result;
+}
+
+sub gen_epilogue_zsh () {
+  return "\nunfunction extend_env\n";
+}
+
+sub gen_cond_alias_zsh ($$$) {
+  # Don't need to validate any of the inputs because gen_cond_alias has 
+  # already done it for us.
+  my $name = shift @_;
+  my $value = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "alias $name=$value\n";
+  if($debug) {
+    $result .="echo \"env-tool: aliasing $name with $value\"\n";
+  }
+
+  return $result;
+}
+
+sub gen_cond_var_zsh ($$$$$) {
+  # Don't need to validate any of the inputs because gen_cond_var has 
+  # already done it for us.
+  my $variable = shift @_;
+  my $additions_array = shift @_;
+  my $default = shift @_;
+  my $safe = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "case \"x\${$variable:-y}\" in\n  xy)";
+  $result .= " export $variable='$default'";
+  if($debug) {
+    $result .="\n    echo \"env-tool: setting $variable with $default\"";
+  }
+  $result .=";;\n  *)\n";
+    
+  for(@$additions_array) {
+   my $safe_string = undef;
+   my $debug_string = undef;
+   if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
+   if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
+    $result .="    extend_env $variable \"$_\" $safe_string $debug_string;\n";
+  }
+  $result .= ";;\nesac\n";
+  
+  return $result;
+}
+
+##############################################################################
+### Generate a "cache" file
+
+sub gen_prologue_cache () {
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<env-config version=\"1.1\">";
+}
+
+sub gen_epilogue_cache () {
+  return "</env-config>";
+}
+
+sub gen_cond_alias_cache ($$) {
+  # Don't need to validate any of the inputs because gen_cond_alias has 
+  # already done it for us.
+  my $name = shift @_;
+  my $value = shift @_;
+
+  return "  <alias name=\"$name\" value=\"$value\" />\n";
+}
+
+sub gen_cond_var_cache ($$) {
+  # Don't need to validate any of the inputs because gen_cond_var has 
+  # already done it for us.
+  my $variable = shift @_;
+  my $additions_array = shift @_;
+   
+  my $result = ""; 
+  for(@$additions_array) {
+    $result .="  <absolute-variable name=\"$variable\">$_</absolute-variable>\n";    
+  }
+  
+  return $result;
+}
+
+
+##############################################################################
+### Glue for all shells ##########
+
+# Spit out any initial setup that is needed
+sub gen_prologue ($) {
+  my $format = shift @_;
+  
+  my $result = "\# This file has been automatically generated by env-tool.\n\# You probably do not want to edit this by hand.\n\n";
+  
+  if($format eq "sh") {
+    $result .= gen_prologue_sh();
+  } elsif($format eq "csh") {
+    $result .= gen_prologue_csh();
+  } elsif($format eq "zsh") {
+    $result .= gen_prologue_zsh();
+  } else {
+    die "gen_prologue: Invalid format $format.";
+  }
+  
+  return $result;
+}
+
+# Spit out any closing setup that is needed
+sub gen_epilogue ($) {
+  my $format = shift @_;
+  
+  my $result = undef;
+  
+  if($format eq "sh") {
+    $result = gen_epilogue_sh();
+  } elsif($format eq "csh") {
+    $result = gen_epilogue_csh();
+  } elsif($format eq "zsh") {
+    $result = gen_epilogue_zsh();
+  } else {
+    die "gen_epilogue: Invalid format $format.";
+  }
+
+  $result .= "\# Thank you for using env-tool!";
+
+  return $result;
+}
+
+# Utitity function to generate shell conditions for aliases
+sub gen_cond_alias ($$$$) {
+  my $format = shift @_;
+  my $name = shift @_;
+  # Check that the length is non-zero
+  if ((length $name) <= 0) {
+    die "gen_cond_alias: Invalid name argument.";
+  }
+  my $value = shift @_;
+  # Check that the length is non-zero
+  if ((length $value) <= 0) {
+    die "gen_cond_alias: Invalid value argument for alias name $name.";
+  }
+  my $debug = shift @_;
+
+  my $result = undef;
+  
+  if($format eq "sh") {
+    $result = gen_cond_alias_sh($name, $value, $debug);
+  } elsif($format eq "csh") {
+    $result = gen_cond_alias_csh($name, $value, $debug);
+  } elsif($format eq "zsh") {
+    $result = gen_cond_alias_zsh($name, $value, $debug);
+  } else {
+    die "gen_cond_alias: Invalid format $format for alias $name=$value.";
+  }
+
+  return $result;
+}
+
+# Utility function to generate shell conditionals for assigning variables
+sub gen_cond_var ($$$$$$) {
+  my $format = shift @_;
+  my $variable = shift @_;
+  # Check that the length is non-zero
+  if ((length $variable) <= 0) {
+    die "gen_cond_var: Invalid variable argument.";
+  }
+  my $additions_array = shift @_;
+  my $default = shift @_;
+  my $safe = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+
+  if($format eq "sh") {
+    $result = gen_cond_var_sh($variable, $additions_array, $default, $safe, $debug);
+  } elsif ($format eq "csh") {
+    $result = gen_cond_var_csh($variable, $additions_array, $default, $safe, $debug);
+  } elsif ($format eq "zsh") {
+    $result = gen_cond_var_zsh($variable, $additions_array, $default, $safe, $debug);
+  } else {
+     die "gen_cond_var: Invalid format $format for variable $variable";
+  }
+
+  return $result;
+}
+
+##############################################################################
+
+# Scan the specified directory and its children for configuration files, and
+# process them
+sub collect_environment ($\@) {
+    my $dir = shift(@_);
+    my $ignores_tmp = shift @_;
+    my @ignores = undef;
+
+    if($ignores_tmp) { 
+      @ignores = @{$ignores_tmp};
+    } else {
+      @ignores = ();
+    }
+
+    # Test that it is actually a directory
+    if(!(-d $dir)) {
+      die "collect_environment: argument \"$dir\" is not a directory!";
+    }
+
+    &File::Find::find(sub
+                      {   
+                          my $file = $_;
+                          # Check for an ignore file and prune to prevent recursing
+                          if (-f "$file/.env-config-ignore") {
+                              #print STDERR "Ignoring .env-config files in: $File::Find::name\n";
+                              $File::Find::prune = 1;
+                              return; 
+                          }
+
+                          # If we can't change to this directory, prune it
+                          if ((-d $file) && !(-x $file)) {
+                            $File::Find::prune = 1;
+                            return; 
+                          }
+
+                          # Does this file match our ignores list?
+                          foreach my $pat (@ignores) {
+                            my $re = qr/$pat/;
+                            if($file =~ /$re/) {
+                              $File::Find::prune = 1;
+                              return;
+                            }
+                          }
+                          
+                          # Are we looking at a configuration file?
+                          if (/^.env-config.xml$/) {
+                            # Can we read it? And is a plain old file?
+                            if ((-f $_) && (-r $_)) {
+                              open(XML, $_);
+                              my @temp = <XML>;
+                              &process_config($File::Find::dir,"@temp");
+                              close XML; 
+                            }                            
+                          }
+                          },
+                      $dir);
+}
+
+# Write out a script based upon the environment information we have collected
+sub update ($$$$$) {
+    my $format = shift @_;
+    my $output = shift @_;
+    my $safe = shift @_;
+    my $debug = shift @_;
+    my $testing = shift @_;
+
+    if(!$testing) {
+      open (OUTPUT, ">$output");
+      print OUTPUT gen_prologue($format);
+    }
+
+    for(keys %environment) {
+        #print STDERR "_: [$_]\n";
+        if(!(exists $default_environment{$_})) {
+            $default_environment{$_} = [];
+        }
+
+        #print STDERR "environment{_}: [@{$environment{$_}}]\n";
+        my $default = join(":", (@{$default_environment{$_}}, @{$environment{$_}}));
+        #print STDERR "default: [$default]\n";
+
+        my $result = gen_cond_var($format, $_, $environment{$_}, $default, $safe, $debug);
+        if(!$testing) {
+          print OUTPUT $result, "\n";
+        }
+    }
+    
+    # Create aliases
+    if(!$safe) {
+      for(keys %aliases) {
+        my @values = $aliases{$_};
+        foreach my $value (@values) {
+          my $result = gen_cond_alias($format, $_, $value, $debug);
+          if (!$testing) {
+            print OUTPUT $result;
+          }
+        }  
+      }
+    }  
+    
+    #print STDERR "_: [$_]\n";
+
+    if(!$testing) {
+      print OUTPUT gen_epilogue($format);
+      close (OUTPUT);
+    }
+}
+
+#####################################################################
+
+my $lockfile = "$ENV{HOME}/.env-tool.lock";
+
+sub detect_lock () {
+  return (-e $lockfile);
+}
+
+sub acquire_lock () {
+  if (-e $lockfile) {
+    die "acquire_lock: lock already exists!";
+  } else {
+    open(LOCK, ">$lockfile");
+    print LOCK <<END;
+env-tool scanning in progress...
+Do not disturb -- unless somehow the owning 
+env-tool process has died without cleaning up.
+END
+
+   close(LOCK);
+  }
+}
+
+sub remove_lock () {
+  if (-e $lockfile) {
+    if ((unlink $lockfile) != 1) {
+      die "remove_lock: somehow failed to remove the lock!";
+    }
+  } else {
+    die "remove_lock: tried to remove nonexistant lock!"
+  }
+}
+
+#####################################################################
+
+# Does most of the actual work
+sub run_env_tool (\@\@$$$$$) {
+  my $dirs_tmp = shift @_;
+  my @dirs = @$dirs_tmp;
+  my $formats_tmp = shift @_;
+  my @formats = @$formats_tmp;
+  my $safe = shift @_;
+  my $debug = shift @_;
+  my $test = shift @_;
+  my $lock = shift @_;
+  my $ignores = shift @_;
+
+  # Create a lock file so that we don't wind up with multiple instances
+  # scanning when several terminals are opened in a short span of time
+  # Set up some signal handlers
+
+  if ($lock) {
+    if (detect_lock()) {
+      print "Another env-tool process is already running.\n";
+      exit 1;
+    } else {
+      acquire_lock();
+    }
+  }  
+
+  # Do this here because otherwise Perl segfaults.  I don't know why.
+  $cm_exists = &sml_cm_exists();
+  @cm_path = ();
+
+  # *** Should only run this if an extension to CM_PATH has been
+  # requested.
+  if($cm_exists) {
+    @cm_path = &obtain_cm_path();
+  }
+
+  # Scan and collect environment information
+  foreach my $dir (@dirs) { &collect_environment($dir, $ignores); }
+
+  # Initialize the default environment
+  &init_default_environment();
+
+  # For each type of script, atomically update it.
+  foreach my $format (@formats) {
+    # Create a reasonably race-free temporary filename
+    my $tmp_file = "$ENV{HOME}/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
+    # Specifiy our destination file
+    my $dest_file = "$ENV{HOME}/.env-tool.".$format;
+    
+    # Search and write to our temporary file
+    &update($format, $tmp_file, $safe, $debug, $test);
+    
+    # Atomically update, on systems that have rename(2)
+    rename($tmp_file, $dest_file);
+  }
+
+  if($lock) {
+    # Eliminate the lock file
+    remove_lock();
+  }  
+}
+
+#####################################################################
+
+sub config_signals () {
+  # Setup signal handlers to clean up lock files.
+  sub catch_signal {
+    my $signame = shift;
+    remove_lock();
+    die "Somebody set us up the SIG$signame!";
+  }
+
+  # Catch all the ones that might cause us to exit
+  $SIG{INT} = \&catch_signal;  
+  $SIG{KILL} = \&catch_signal; 
+  $SIG{ALRM} = \&catch_signal; 
+  $SIG{HUP} = \&catch_signal; 
+  $SIG{PIPE} = \&catch_signal; 
+  $SIG{POLL} = \&catch_signal; 
+  $SIG{PROF} = \&catch_signal; 
+  $SIG{TERM} = \&catch_signal; 
+  $SIG{USR1} = \&catch_signal; 
+  $SIG{USR2} = \&catch_signal; 
+  $SIG{VTALRM} = \&catch_signal; 
+  $SIG{STKFLT} = \&catch_signal;
+
+  # Catch all the ones that might cause us to core dump
+  $SIG{ABRT} = \&catch_signal; 
+  $SIG{FPE} = \&catch_signal; 
+  $SIG{ILL} = \&catch_signal; 
+  $SIG{QUIT} = \&catch_signal; 
+  $SIG{SEGV} = \&catch_signal; 
+  $SIG{TRAP} = \&catch_signal; 
+  $SIG{SYS} = \&catch_signal; 
+  $SIG{BUS} = \&catch_signal; 
+  $SIG{XCPU} = \&catch_signal; 
+  $SIG{XFSZ} = \&catch_signal; 
+}
+
+#####################################################################
+
+### Actual program execution begins here
+   
+# Did the user request help?
+my %cmdoptions = ();
+GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", 
+                         "safe", "debug", "test", "lock", "ignores=s@");
+
+# Check to see whether we need to print usage
+if($cmdoptions{h} || $cmdoptions{help}) {
+  &print_usage();
+}
+
+# Check to see which format files we should generate
+my @formats = ();
+if($cmdoptions{csh}) {
+  push @formats, "csh";
+}
+if($cmdoptions{sh}) {
+  push @formats, "sh";
+}
+if($cmdoptions{zsh}) {
+  push @formats, "zsh";
+}
+# None were selected? Do all
+if((scalar @formats) == 0) {
+  @formats = ("sh", "csh", "zsh");
+}
+
+# Can't use --bg and --condbg simultaneously
+if($cmdoptions{bg} && $cmdoptions{condbg}) {
+  &print_usage();
+}
+
+
+# Decide whether or not we should run in the background
+my $pid = undef;
+if($cmdoptions{bg}) {
+  $pid = fork;
+} elsif ($cmdoptions{condbg}) {
+  
+  # Check to see whether scripts exist
+  if((-e "$ENV{HOME}/.env-tool.sh" && (grep ("sh", @formats))) || 
+     (-e "$ENV{HOME}/.env-tool.csh" && (grep ("csh", @formats))) || 
+     (-e "$ENV{HOME}/.env-tool.zsh" && (grep ("zsh", @formats)))) {
+    $pid = fork;
+  } else {
+    $pid = 0;
+  }
+} else {
+  $pid = 0;
+}
+
+# The remaining options should be directories
+my @dirs = @ARGV;
+
+# If there are no directories specified add the current one.
+if((scalar @dirs) == 0) {
+push @dirs, getcwd;
+}
+
+
+# Are we the process that is going to do the work?
+if($pid == 0) {
+  if($cmdoptions{lock}) {
+    config_signals();
+  }
+
+  run_env_tool(@dirs, 
+               @formats, 
+               $cmdoptions{safe}, 
+               $cmdoptions{debug}, 
+               $cmdoptions{test}, 
+               $cmdoptions{lock},
+               $cmdoptions{ignores});
+}
+
+# Exit successfully 
+exit 0;
+
+=head1 NAME
+
+env-tool - a tool for constructing a script to set up a user's environment
+
+=head1 SYNOPSIS
+
+B<env-tool> [B<-h>|B<--help>] [B<--sh>] [B<--csh>] [B<--zsh>] 
+[B<--ignores> re]
+
+[B<--lock>] [B<--bg>|B<--condbg>] [B<--safe>] 
+[B<--debug>] [B<--test>] [directories...]
+
+=head1 DESCRIPTION
+
+Scan the specified directories and their children for environment
+configuration files, and atomically create ~/.env-tool.sh,
+~/.env-tool.csh, and ~/.env-tool.zsh files as specified.  If no
+directories are specified the current directory is searched.  Environment
+configuration files are XML documents named .env-config.xml containing
+some number of variable definitions.  If a directory contains a file
+named .env-config-ignore, it and its subdirectories are ignored.
+
+A possible csh-style shell configuration to use env-tool might look
+like the following lines added to one's .cshrc file:
+
+  setenv UNSUPPORTED /mnt/eclipse/unsupported
+  setenv UNSUPDIRS $UNSUPPORTED/generic $UNSUPPORTED/linux
+  if (-x "$UNSUPPORTED/env-tool") then
+      # If we do not disconnect it from the tty, then Emacs hangs
+      # waiting for this when running a shell command.
+      (cd; "$UNSUPPORTED/env-tool" --csh --condbg $UNSUPDIRS) >& /dev/null < /dev/null
+  endif
+
+  if (-r "$HOME/.env-tool.csh") then
+      source "$HOME/.env-tool.csh"
+  endif
+
+A possible sh-style shell configuration to use env-tool might look
+like the following lines added to one's .profile file:
+
+  export UNSUPPORTED=/mnt/eclipse/unsupported
+  export UNSUPDIRS=${UNSUPPORTED}/{generic,linux}
+  [ -x "${UNSUPPORTED}/env-tool" ] &&
+  # If we do not disconnect it from the tty, then Emacs hangs
+  # waiting for this when running a shell command.
+  (${UNSUPPORTED}/env-tool --sh --condbg ${UNSUPDIRS}) > /dev/null 2>&1 0<&1
+
+  [ -r "${HOME}/.env-tool.sh" ] && . "${HOME}/.env-tool.sh"
+
+Finally, when using Z-shell one should place the following bit of code 
+in your .zshrc file:
+  
+  export UNSUPPORTED=/mnt/eclipse/unsupported
+  export UNSUPDIRS=${UNSUPPORTED}/{generic,linux}
+  [ -x "${UNSUPPORTED}/env-tool" ] &&
+  # If we do not disconnect it from the tty, then Emacs hangs
+  # waiting for this when running a shell command.
+  (${UNSUPPORTED}/env-tool --zsh --condbg ${UNSUPDIRS}) > /dev/null 2>&1 0<&1
+
+and this line in your .zshenv file:
+
+  [ -r "${HOME}/.env-tool.zsh" ] && . "${HOME}/.env-tool.zsh"
+
+
+A possible .env-config.xml file might look like:
+
+  <?xml version="1.0" encoding="UTF-8"?>
+  <env-config version="1.1">
+    
+    <!-- An alias element will create a shell alias "foo" for "bar",
+         if the user has not already defined an alias "foo".  Aliases will
+         not be defined if the user has chosen "safe" mode.
+         
+    -->
+    <alias name="foo" value="bar"/>
+    
+    <!-- A relative-alias element will create a shell alias "foo" 
+         with the current dirrectory plus the tag contents.  Aliases will
+         not be defined if the user has chosen "safe" mode.
+    -->
+    <relative-alias name="foo">/bin</relative-alias>
+
+    <!-- A content-less variable element will just add the current 
+         directory to the environment variable.
+    -->
+    <variable name="PATH" />
+    
+    <!-- This will add the current directory plus the tag contents 
+         to the specified environment variable.
+    -->
+    <variable name="PATH">/bin</variable>
+
+    <!-- A absolute-variable elements will simply add the enclosed text
+         to the specified environment variable.
+    -->
+    <absolute-variable name="PATH">/bin</absolute-variable>
+
+    <!-- Variable elements with contents are added to the environment
+         variable with the present directory, a slash, and the contents
+         of the variable element.
+    -->
+    <variable name="CLASSPATH">bar.jar</variable>
+
+    <!-- CM_PATH is special, in that if you do not already have
+         CM_PATH set, it will query sml-cm to find out what the 
+         default should be in order to extend it rather than overriding
+         it.
+    -->
+    <variable name="CM_PATH" />
+
+    <!-- kpathsea environment variables also behave slightly differently
+         as well. If the contents of the variable are "//", then
+         the current directory followed by two slashes will be added.
+         Additionally, the empty path will be added be default if the
+         variable does not exist in the environment.
+    -->
+    <variable name="TEXINPUTS">//</variable>
+
+    <!-- env-tool recognizes certain variables as being used by kpathsea,
+         but if you need to force the correct behavior you can use
+         kpathsea-variable. -->
+    <kpathsea-variable name="FOOINPUTS">//</kpathsea-variable>
+
+  </env-config>
+
+The options are:
+
+=over 4
+
+=item [B<-h>|B<--help>]
+
+print usage information
+
+=item B<--sh>
+
+only create ~/.env-tool.sh, a script for Bourne descended shells
+
+=item B<--csh>
+
+only create ~/.env-tool.csh, a script for C-Shell descended shells
+
+=item B<--zsh>
+
+only create ~/.env-tool.zsh, a script optimized for Z shell
+
+=item B<--ignores> re
+
+prune the specified regular expression from the search.  May be used any number of times.
+
+=item B<--lock>
+
+force locking to avoid multiple instances of env-tool from running simultaneously.
+Creates a file ~/.env-tool.lock that in rare circumstances can be accidentally
+left behind if the process is killed in an unforeseen fashion.
+
+=item B<--bg>
+
+run in the background.  Only one env-tool process may run at a time if 
+--lock is used.
+
+=item B<--condbg>
+
+run in the background if ~/.env-tool.sh, ~/.env-tool.csh, ~/.env-tool.zsh 
+already exist.  Only one env-tool process may run at a time --lock is used.
+
+=item B<--safe>
+
+env-tool produces configuration files that attempt to be innocuous.  That is
+instead of prepending extensions to environment variables, they will be extended,
+and no aliases will be defined.
+
+=item B<--debug>
+
+the shell code produce will print debugging information about its actions.
+
+=item B<--test>
+
+run as specified, but do not write output to a file.
+
+=head1 VERSION
+
+$Id: env-tool 1039 2005-07-19 14:27:10Z geoffw $
+
+=head1 AUTHOR
+
+Geoffery Alan Washburn <washburn@acm.org>
+
+=head1 LICENSE
+
+Copyright Geoffrey Alan Washburn, 2005.
+
+Some parts copyright Trustees of Boston University, 2002.
+
+Some parts copyright Joe B Wells, 2002.
+
+You can redistribute and/or modify this software under the terms of
+the GNU General Public License as published by the Free Software
+Foundation; either version 2, or (at your option) any later version.
+
+This software is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You may obtain the GNU General Public License by writing to the Free
+Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+02111-1307, USA.
+
+=cut
+
+# Local variables:
+# mode: perl
+# end:
