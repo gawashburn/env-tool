@@ -1,0 +1,17 @@
+<todo version="0.1.19">
+    <title>
+        env-tool to-do list $Id: .todo 2 2005-08-01 19:45:15Z geoffw $
+    </title>
+    <note priority="veryhigh" time="1122925452">
+        Add caching support.
+    </note>
+    <note priority="medium" time="1122925391">
+        Write more documentation.
+    </note>
+    <note priority="medium" time="1122925443">
+        Add unit tests?
+    </note>
+    <note priority="medium" time="1122925473">
+        Write schemas for validating .env-config.xml files.
+    </note>
+</todo>

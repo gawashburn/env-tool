@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 1039 2005-07-19 14:27:10Z geoffw $
+# env-tool $Id: env-tool 2 2005-08-01 19:45:15Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -1458,7 +1458,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 1039 2005-07-19 14:27:10Z geoffw $
+$Id: env-tool 2 2005-08-01 19:45:15Z geoffw $
 
 =head1 AUTHOR
 
