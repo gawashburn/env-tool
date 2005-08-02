@@ -23,6 +23,8 @@ alias foo=bar
 echo "env-tool: aliasing foo with bar"
 alias foo=baz
 echo "env-tool: aliasing foo with baz"
+alias foo=/testing/qux
+echo "env-tool: aliasing foo with /testing/qux"
 
 unfunction extend_env
 # Thank you for using env-tool!

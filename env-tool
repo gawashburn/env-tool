@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 7 2005-08-02 21:14:04Z geoffw $
+# env-tool $Id: env-tool 8 2005-08-02 21:37:01Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -307,11 +307,11 @@ sub obtain_cm_path () {
 ##############################################################################
 
 sub should_ignore_dir ($$) {
-  my $dir = shift(@_);
-  my $ignores_tmp = shift @_;
+  my $dir = shift;
+  my $ignores_tmp = shift;
   my @ignores = undef;
 
-  if($ignores_tmp) { 
+  if(defined $ignores_tmp) { 
     @ignores = @{$ignores_tmp};
   } else {
     @ignores = ();
@@ -331,10 +331,10 @@ sub should_ignore_dir ($$) {
   
 sub add_alias_entry ($$$$) {
   # No checks because we assume they have been done already.
-  my $dir = shift @_;
+  my $dir = shift;
   my $name = shift;
   my $value = shift;
-  my $ignores = shift ;
+  my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
     if(!(exists $directories{$dir}{"alias"})) {
@@ -347,10 +347,10 @@ sub add_alias_entry ($$$$) {
 
 sub add_relative_alias_entry ($$$$) {
   # No checks because we assume they have been done already.
-  my $dir = shift @_;
+  my $dir = shift;
   my $name = shift;
   my $value = shift;
-  my $ignores = shift ;
+  my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
     if(!(exists $directories{$dir}{"relative-alias"})) {
@@ -375,11 +375,8 @@ sub extend_aliases ($$$$$) {
   if((defined $realdir) && !(-d $realdir)) {
     die "extend_aliases: invalid directory argument for alias $name!"
   }
+  # Don't need to check that virtual directories really exist
   my $virtualdir = shift;
-  # Check that it is really a directory
-  if((defined $virtualdir) && !(-d $virtualdir)) {
-    die "extend_aliases: invalid directory argument for alias $name!"
-  }
   my $ignores = shift;
 
   if (defined $virtualdir) {
@@ -405,11 +402,8 @@ sub extend_relative_aliases ($$$$$) {
   if((defined $realdir) && !(-d $realdir)) {
     die "extend_relative_aliases: invalid directory argument for alias $name!"
   }
+  # Don't need to check that virtual directories really exist
   my $virtualdir = shift;
-  # Check that it is really a directory
-  if((defined $virtualdir) && !(-d $virtualdir)) {
-    die "extend_relative_aliases: invalid directory argument for alias $name!"
-  }
   my $ignores = shift;
 
   if (defined $virtualdir) {
@@ -1127,16 +1121,9 @@ sub gen_cond_var ($$$$$$) {
 
 # Scan the specified directory and its children for configuration files, and
 # process them
-sub collect_environment ($\@) {
-    my $dir = shift(@_);
-    my $ignores_tmp = shift @_;
-    my @ignores = undef;
-
-    if($ignores_tmp) { 
-      @ignores = @{$ignores_tmp};
-    } else {
-      @ignores = ();
-    }
+sub collect_environment ($$) {
+    my $dir = shift;
+    my $ignores = shift;
 
     # Test that it is actually a directory
     if(!(-d $dir)) {
@@ -1147,7 +1134,7 @@ sub collect_environment ($\@) {
                       {   my $file = $_;
 
                           # Does this file match our ignores list?
-                          if(&should_ignore_dir($file, @ignores)) {
+                          if(&should_ignore_dir($file, $ignores)) {
                               #print STDERR "Ignoring .env-config files in: $File::Find::name\n";
                               $File::Find::prune = 1;
                               return;
@@ -1172,7 +1159,7 @@ sub collect_environment ($\@) {
                           # Can we read it? And is a plain old file?
                           if ((-f $cachefile) && (-r $cachefile)) {
                             #print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
-                            &process_file_new(getcwd, $cachefile, @ignores);
+                            &process_file_new(getcwd, $cachefile, $ignores);
                             $File::Find::prune = 1;
                             return;
                           }                            
@@ -1182,7 +1169,7 @@ sub collect_environment ($\@) {
                             # Can we read it? And is a plain old file?
                             if ((-f $_) && (-r $_)) {
                               #print STDERR "Processing $File::Find::dir/$_\n";
-                              &process_file_new(getcwd,$_,@ignores);
+                              &process_file_new(getcwd,$_, $ignores);
                             }                            
                           }
                           },
@@ -1238,7 +1225,7 @@ sub update ($$$$$) {
           foreach my $entry (@entries) {
             my %entry_hash = %{$entry};
             my $result = gen_cond_alias($format, $entry_hash{"name"}, 
-                                      $dir.$entry_hash{"value"}, $debug);
+                                      $dir."/".$entry_hash{"value"}, $debug);
             if (!$testing) {
               print OUTPUT $result;
             }
@@ -1333,7 +1320,7 @@ sub run_env_tool (\@\@$$$$$$) {
   }
 
   # Scan and collect environment information
-  foreach my $dir (@dirs) { &collect_environment($dir, $ignores); }
+  foreach my $dir (@dirs) { collect_environment $dir, $ignores; }
 
   # Initialize the default environment
   &init_default_environment();
@@ -1468,7 +1455,6 @@ if((scalar @dirs) == 0) {
 push @dirs, getcwd;
 }
 
-
 # Are we the process that is going to do the work?
 if($pid == 0) {
   if($cmdoptions{lock}) {
@@ -1482,7 +1468,7 @@ if($pid == 0) {
                $cmdoptions{debug}, 
                $cmdoptions{test}, 
                $cmdoptions{lock},
-               $cmdoptions{ignores});
+               \@{$cmdoptions{ignores}});
 }
 
 # Exit successfully 
@@ -1678,7 +1664,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 7 2005-08-02 21:14:04Z geoffw $
+$Id: env-tool 8 2005-08-02 21:37:01Z geoffw $
 
 =head1 AUTHOR
 
