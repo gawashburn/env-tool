@@ -1,0 +1,9 @@
+TESTS=$(glob D,./tests/*)
+
+.PHONY: test clean
+
+test: $(TESTS)
+
+clean: $(TESTS)
+
+.SUBDIRS: $(TESTS)

@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 6 2005-08-02 19:58:04Z geoffw $
+# env-tool $Id: env-tool 7 2005-08-02 21:14:04Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -235,11 +235,16 @@ my $sml_cm = "sml-cm";
 # should be if they are not set in the environment
 my %default_environment = ();
 
+# This hash stores all the directories we have configuration information
+# about. Each hash contains another a hash from tag names to arrays of entries.
+# So we might have 
+#   $directories{"/usr/local/bin"}{"alias"}[1]{"name"} 
+#   $directories{"/usr/local/bin"}{"alias"}[1]{"value"}
+# for the name and value components of an alias declared in /usr/local/bin  
+my %directories = ();
+
 # Hash the environment variables we are extending
 my %environment = ();
-
-# Hash the aliases we might create
-my %aliases = ();
 
 # Need the two follwing global variables due to stange locality issues.
 
@@ -299,56 +304,121 @@ sub obtain_cm_path () {
   return @processed;
 }
 
-
 ##############################################################################
-# Extend the aliases we are collecting.
-sub extend_aliases_new ($$$\@) {
-  my $name = shift(@_);
-  if ((length $name) <= 0) {
-    die "extend_aliases_new: invalid name argument!";
-  }
-  my $realdir = shift(@_);
-  # Check that it is really a directory
-  if((defined $realdir) && !(-d $realdir)) {
-    die "extend_aliases_new: invalid directory argument for alias $name!"
-  }
-  my $virtualdir = shift(@_);
-  # Check that it is really a directory
-  if((defined $virtualdir) && !(-d $virtualdir)) {
-    die "extend_aliases_new: invalid directory argument for alias $name!"
-  }
-  my $value = shift(@_);
-  if ((length $value) <= 0) {
-    die "extend_aliases_new: invalid value argument for alias name $name!";
-  }
-  my $ignores_tmp = shift(@_);
+
+sub should_ignore_dir ($$) {
+  my $dir = shift(@_);
+  my $ignores_tmp = shift @_;
   my @ignores = undef;
-  
+
   if($ignores_tmp) { 
     @ignores = @{$ignores_tmp};
   } else {
     @ignores = ();
   }
 
-  # FIX this later
-  if (defined $virtualdir) {
-    if(!(&should_ignore_dir($virtualdir, @ignores))) {
-      return;
-    } else {  
-      $value = $virtualdir.$value;
+  foreach my $pat (@ignores) {
+    my $re = qr/$pat/;
+    if($dir =~ /$re/) {
+      return (1 == 1);
     }
-  } elsif (defined $realdir) {
-    $value = $realdir.$value;
   }
+  return (0 == 1);
+}
+
+##############################################################################
+# Extend the aliases we are collecting.
   
-  # Check to see whether there is an entry yet
-  if (!(exists $aliases{$name})) {
-    # Nope, initialize to empty list.
-    $aliases{$name} = ($value);
-  } else {        
-    my @current_mapping = $aliases{$name};
-    push @current_mapping, $value;
-  }  
+sub add_alias_entry ($$$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift @_;
+  my $name = shift;
+  my $value = shift;
+  my $ignores = shift ;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"alias"})) {
+        @{$directories{$dir}{"alias"}} = ({"name" => $name, "value" => $value});
+    } else {
+        push @{$directories{$dir}{"alias"}}, {"name" => $name, "value" => $value};
+    }
+  }
+} 
+
+sub add_relative_alias_entry ($$$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift @_;
+  my $name = shift;
+  my $value = shift;
+  my $ignores = shift ;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"relative-alias"})) {
+        @{$directories{$dir}{"relative-alias"}} = ({"name" => $name, "value" => $value});
+    } else {
+        push @{$directories{$dir}{"relative-alias"}}, {"name" => $name, "value" => $value};
+    }
+  }
+} 
+
+sub extend_aliases ($$$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_aliases: invalid name argument!";
+  }
+  my $value = shift;
+  if ((length $value) <= 0) {
+    die "extend_aliases: invalid value argument for alias name $name!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_aliases: invalid directory argument for alias $name!"
+  }
+  my $virtualdir = shift;
+  # Check that it is really a directory
+  if((defined $virtualdir) && !(-d $virtualdir)) {
+    die "extend_aliases: invalid directory argument for alias $name!"
+  }
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_alias_entry($virtualdir, $name, $value, $ignores);
+  } elsif (defined $realdir) {
+    add_alias_entry($realdir, $name, $value, $ignores);
+  } else {
+    die "extend_aliases: no valid directory argument provided!";
+  }
+}  
+
+sub extend_relative_aliases ($$$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_relative_aliases: invalid name argument!";
+  }
+  my $value = shift;
+  if ((length $value) <= 0) {
+    die "extend_relative_aliases: invalid value argument for alias name $name!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_relative_aliases: invalid directory argument for alias $name!"
+  }
+  my $virtualdir = shift;
+  # Check that it is really a directory
+  if((defined $virtualdir) && !(-d $virtualdir)) {
+    die "extend_relative_aliases: invalid directory argument for alias $name!"
+  }
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_relative_alias_entry($virtualdir, $name, $value, $ignores);
+  } elsif (defined $realdir) {
+    add_relative_alias_entry($realdir, $name, $value, $ignores);
+  } else {
+    die "extend_relative_aliases: no valid directory argument provided!";
+  }
 }  
 
 ##############################################################################
@@ -400,35 +470,28 @@ sub extend_env ($$$) {
   }
 }
 
-sub extend_env_new ($$$$\@) {
-  my $variable = shift(@_);
+sub extend_env_new ($$$$$) {
+  my $variable = shift;
   # Check that it is a valid variable name
   if ((length $variable) <= 0) {
     die "extend_env_new: invalid variable argument!";
   }
-  my $realdir = shift(@_);
+  my $realdir = shift;
   # Check that it is really a directory
   if(!(-d $realdir)) {
     die "extend_env_neq: invalid directory argument for variable $variable!"
   }
-  my $virtualdir = shift(@_);
+  my $virtualdir = shift;
   # Check that it is really a directory
   if((defined $virtualdir) && !(-d $virtualdir)) {
     die "extend_env_new: invalid directory argument for variable $variable!"
   }
-  my $text = shift(@_);
-  my $ignores_tmp = shift @_;
-  my @ignores = undef;
-  
-  if($ignores_tmp) { 
-    @ignores = @{$ignores_tmp};
-  } else {
-    @ignores = ();
-  }
+  my $text = shift;
+  my $ignores= shift;
                           
   # Does this file match our ignores list?
   if(defined $virtualdir) {
-    if(!(&should_ignore_dir($virtualdir, @ignores))) {
+    if(!(&should_ignore_dir($virtualdir, $ignores))) {
       extend_env($variable, $virtualdir, $text);
     }    
   } else {
@@ -438,46 +501,32 @@ sub extend_env_new ($$$$\@) {
 }
 
 ##############################################################################
-sub process_file_new ($$\@) {
-  my $dir = shift(@_);
+sub process_file_new ($$$) {
+  my $dir = shift;
   # Check that it is actually a directory
   if(!(-d $dir)) {
     die "process_file_new: directory argument \"$dir\" is not a directory!";
   }
-  my $file = shift(@_);
-  my $ignores_tmp = shift @_;
-  my @ignores = undef;
-  
-  if($ignores_tmp) { 
-    @ignores = @{$ignores_tmp};
-  } else {
-    @ignores = ();
-  }
+  my $file = shift;
+  my $ignores = shift;
   
   open(XML, $file);
   my @temp = <XML>;
   close XML; 
-  &process_config_new($dir,"@temp",@ignores);
+  &process_config_new($dir,"@temp",$ignores);
 }
 
 ##############################################################################
 
 # Code to process a environment configuration file
-sub process_config_new ($$\@) {
-  my $dir = shift(@_);
+sub process_config_new ($$$) {
+  my $dir = shift;
   # Check that it is actually a directory
   if(!(-d $dir)) {
     die "process_config: directory argument \"$dir\" is not a directory!";
   }
-  my $xml = shift(@_);
-  my $ignores_tmp = shift @_;
-  my @ignores = undef;
-  
-  if($ignores_tmp) { 
-    @ignores = @{$ignores_tmp};
-  } else {
-    @ignores = ();
-  }
+  my $xml = shift;
+  my $ignores = shift;
   
   my @path = ();
   my $current_variable = undef;
@@ -593,20 +642,19 @@ sub process_config_new ($$\@) {
        push @path, $parent;
 
        if((defined $current_variable) && ($parent eq "variable")) {
-         &extend_env_new($current_variable, $dir, $current_directory, $text, @ignores);
+         &extend_env_new($current_variable, $dir, $current_directory, $text, $ignores);
          undef $current_variable;
        } elsif((defined $current_alias_name) && 
                ($parent eq "relative-alias")) {
-         &extend_aliases_new($current_alias_name, $dir, $current_directory, 
-                             $text, @ignores); 
+         extend_relative_aliases($current_alias_name, $text, $dir, $current_directory, $ignores); 
          undef $current_alias_name;
        } elsif((defined $current_variable) && 
                ($parent eq "kpathsea-variable")) {
-         &extend_env_new($current_variable, $dir, $current_directory, $text, @ignores);
+         &extend_env_new($current_variable, $dir, $current_directory, $text, $ignores);
          undef $current_variable;
        } elsif((defined $current_variable) && 
                ($parent eq "absolute-variable")) {
-         &extend_env_new($current_variable, undef, $current_directory, $text, @ignores);
+         &extend_env_new($current_variable, undef, $current_directory, $text, $ignores);
          undef $current_variable;
        } elsif((defined $current_variable)||(defined $current_alias_name)) {
          die "character data in an improper location.\n";
@@ -624,7 +672,7 @@ sub process_config_new ($$\@) {
 
        if($element eq "variable") {
          if(defined $current_variable) {
-           &extend_env_new($current_variable, $dir, $current_directory, undef, @ignores);
+           extend_env_new($current_variable, $dir, $current_directory, undef, $ignores);
            undef $current_variable;
          }
        }
@@ -637,8 +685,8 @@ sub process_config_new ($$\@) {
        
        if($element eq "alias") {
          if(defined $current_alias_name) {
-           &extend_aliases_new($current_alias_name, undef, undef, 
-                               $current_alias_value, @ignores);
+           extend_aliases($current_alias_name, $current_alias_value, 
+                          $dir, undef, $ignores);
            undef $current_alias_name;
            undef $current_alias_value;
          }
@@ -646,7 +694,7 @@ sub process_config_new ($$\@) {
 
        if($element eq "kpathsea-variable") {
          if(defined $current_variable) {
-           &extend_env_new($current_variable, $dir, $current_directory, undef, @ignores);
+           &extend_env_new($current_variable, $dir, $current_directory, undef, $ignores);
            undef $current_variable;
          }
        }
@@ -1076,27 +1124,6 @@ sub gen_cond_var ($$$$$$) {
 
 ##############################################################################
 
-sub should_ignore_dir ($\@) {
-  my $dir = shift(@_);
-  my $ignores_tmp = shift @_;
-  my @ignores = undef;
-
-  if($ignores_tmp) { 
-    @ignores = @{$ignores_tmp};
-  } else {
-    @ignores = ();
-  }
-
-  foreach my $pat (@ignores) {
-    my $re = qr/$pat/;
-    if($dir =~ /$re/) {
-      return (1 == 1);
-    }
-  }
-  return (0 == 1);
-}
-
-##############################################################################
 
 # Scan the specified directory and its children for configuration files, and
 # process them
@@ -1193,14 +1220,30 @@ sub update ($$$$$) {
     
     # Create aliases
     if(!$safe) {
-      for(keys %aliases) {
-        my @values = $aliases{$_};
-        foreach my $value (@values) {
-          my $result = gen_cond_alias($format, $_, $value, $debug);
-          if (!$testing) {
-            print OUTPUT $result;
+      for(keys %directories) {
+        my $dir = $_;
+        if(defined $directories{$dir}{"alias"}) {
+          my @entries = @{$directories{$dir}{"alias"}};
+          foreach my $entry (@entries) {
+            my %entry_hash = %{$entry};
+            my $result = gen_cond_alias($format, $entry_hash{"name"}, 
+                                        $entry_hash{"value"}, $debug);
+            if (!$testing) {
+              print OUTPUT $result;
+            }
           }
-        }  
+        }
+        if(defined $directories{$dir}{"relative-alias"}) {
+          my @entries = @{$directories{$dir}{"relative-alias"}};
+          foreach my $entry (@entries) {
+            my %entry_hash = %{$entry};
+            my $result = gen_cond_alias($format, $entry_hash{"name"}, 
+                                      $dir.$entry_hash{"value"}, $debug);
+            if (!$testing) {
+              print OUTPUT $result;
+            }
+          }
+        }
       }
     }  
     
@@ -1635,7 +1678,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 6 2005-08-02 19:58:04Z geoffw $
+$Id: env-tool 7 2005-08-02 21:14:04Z geoffw $
 
 =head1 AUTHOR
 
