@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 4 2005-08-02 18:54:17Z geoffw $
+# env-tool $Id: env-tool 5 2005-08-02 19:28:03Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -462,13 +462,36 @@ sub process_file ($$) {
   my $dir = shift(@_);
   # Check that it is actually a directory
   if(!(-d $dir)) {
-    die "process_config: directory argument \"$dir\" is not a directory!";
+    die "process_file: directory argument \"$dir\" is not a directory!";
   }
   my $file = shift(@_);
   open(XML, $file);
   my @temp = <XML>;
   close XML; 
   &process_config($dir,"@temp");
+}
+
+##############################################################################
+sub process_file_new ($$\@) {
+  my $dir = shift(@_);
+  # Check that it is actually a directory
+  if(!(-d $dir)) {
+    die "process_file_new: directory argument \"$dir\" is not a directory!";
+  }
+  my $file = shift(@_);
+  my $ignores_tmp = shift @_;
+  my @ignores = undef;
+  
+  if($ignores_tmp) { 
+    @ignores = @{$ignores_tmp};
+  } else {
+    @ignores = ();
+  }
+  
+  open(XML, $file);
+  my @temp = <XML>;
+  close XML; 
+  &process_config_new($dir,"@temp",@ignores);
 }
 
 ##############################################################################
@@ -713,7 +736,7 @@ sub process_config_new ($$\@) {
        if($element eq "variable") {
          # Make sure we are structured properly
          my $parent = pop @path;
-         if(($parent ne "env-config") || ($parent ne "directory")) {
+         if(($parent ne "env-config") && ($parent ne "directory")) {
            die "variable element not underneath an env-config or directory element.\n";
          } else {
            push @path, $parent;
@@ -725,7 +748,7 @@ sub process_config_new ($$\@) {
        if($element eq "alias") {
          # Make sure we are structured properly
          my $parent = pop @path;
-         if(($parent ne "env-config") || ($parent ne "directory")) {
+         if(($parent ne "env-config") && ($parent ne "directory")) {
            die "alias element not underneath an env-config or directory element.\n";
          } else {
            push @path, $parent;
@@ -738,7 +761,7 @@ sub process_config_new ($$\@) {
        if($element eq "relative-alias") {
          # Make sure we are structured properly
          my $parent = pop @path;
-         if(($parent ne "env-config") || ($parent ne "directory")) {
+         if(($parent ne "env-config") && ($parent ne "directory")) {
            die "relative-alias element not underneath an env-config or directory element.\n";
          } else {
            push @path, $parent;
@@ -750,7 +773,7 @@ sub process_config_new ($$\@) {
        if($element eq "absolute-variable") {
          # Make sure we are structured properly
          my $parent = pop @path;
-         if(($parent ne "env-config") || ($parent ne "directory")) {
+         if(($parent ne "env-config") && ($parent ne "directory")) {
            die "absolute-variable element not underneath an env-config or directory element.\n";
          } else {
            push @path, $parent;
@@ -762,7 +785,7 @@ sub process_config_new ($$\@) {
        if($element eq "kpathsea-variable") {
          # Make sure we are structured properly
          my $parent = pop @path;
-         if(($parent ne "env-config") || ($parent ne "directory")) {
+         if(($parent ne "env-config") && ($parent ne "directory")) {
            die "kapthsea-variable element not underneath an env-config or directory element.\n";
          } else {
            push @path, $parent;
@@ -799,7 +822,7 @@ sub process_config_new ($$\@) {
                ($parent eq "absolute-variable")) {
          &extend_env_new($current_variable, undef, $current_directory, $text, @ignores);
          undef $current_variable;
-       } else {
+       } elsif((defined $current_variable)||(defined $current_alias_name)) {
          die "character data in an improper location.\n";
        }
      },
@@ -861,7 +884,8 @@ sub process_config_new ($$\@) {
 # Print the usage information
 sub print_usage () {
   print <<END;
-Usage: env-tool [-h|--help] [--sh] [--csh] [--zsh] [--ignores re]
+Usage: env-tool [-h|--help] [--outputdir dir] 
+                [--sh] [--csh] [--zsh] [--ignores re]
                 [--lock] [--bg|--condbg] [--safe] [--debug] 
                 [--test] [directories ...]
 
@@ -870,38 +894,41 @@ configuation files, and atomically create ~/.env-tool.sh, ~/.env-tool.csh,
 and ~/.env-tool.zsh files as specified.  If no directories are specified
 scan the current directory.
 
-    -h, --help         print this message
+    -h, --help            print this message
     
-        --sh           only create ~/.env-tool.sh, a script for 
-                       Bourne descended shells
+        --outputdir dir   create files in the specifid directory,
+                          rather than in ~/
+    
+        --sh              only create ~/.env-tool.sh, a script for 
+                          Bourne descended shells
                       
-        --csh          only create ~/.env-tool.csh, a script for 
-                       C-Shell descended shells
+        --csh             only create ~/.env-tool.csh, a script for 
+                          C-Shell descended shells
                       
-        --zsh          only create ~/.env-tool.zsh, a script for 
-                       optimized for Z-Shell
+        --zsh             only create ~/.env-tool.zsh, a script for 
+                          optimized for Z-Shell
         
-        --ignores re   prune the specified regular expression from
-                       the search.  May be used any number of times.
+        --ignores re      prune the specified regular expression from
+                          the search.  May be used any number of times.
 
-        --lock         force locking so that only one instance can
-                       operate at a time
+        --lock            force locking so that only one instance can
+                          operate at a time
                       
-        --bg           run in the background. Only one instance of 
-                       env-tool may run at a time if --lock is used
+        --bg              run in the background. Only one instance of 
+                          env-tool may run at a time if --lock is used
                       
-        --condbg       run in the background if ~/.env-tool.sh or 
-                       ~/.env-tool.csh already exist. Only one 
-                       instance of env-tool may run at a time
-                       if --lock is used
+        --condbg          run in the background if ~/.env-tool.sh or 
+                          ~/.env-tool.csh already exist. Only one 
+                          instance of env-tool may run at a time
+                          if --lock is used
                       
-        --safe         produce shell scripts that attempt to not 
-                       disturb the user's existing configuration
+        --safe            produce shell scripts that attempt to not 
+                          disturb the user's existing configuration
                       
-        --debug        output shell code that describes what 
-                       it is doing
+        --debug           output shell code that describes what 
+                          it is doing
                       
-        --test         run but do not write output to a file. 
+        --test            run but do not write output to a file. 
 
 Try `perldoc env-tool' for more information.
 END
@@ -1277,10 +1304,10 @@ sub should_ignore_dir ($\@) {
   foreach my $pat (@ignores) {
     my $re = qr/$pat/;
     if($dir =~ /$re/) {
-      return "true";
+      return (1 == 1);
     }
   }
-  return "false";
+  return (0 == 1);
 }
 
 ##############################################################################
@@ -1308,6 +1335,7 @@ sub collect_environment ($\@) {
 
                           # Does this file match our ignores list?
                           if(&should_ignore_dir($file, @ignores)) {
+                              print STDERR "Ignoring .env-config files in: $File::Find::name\n";
                               $File::Find::prune = 1;
                               return;
                           }    
@@ -1330,7 +1358,8 @@ sub collect_environment ($\@) {
                           my $cachefile = "$file/.env-cache.xml";
                           # Can we read it? And is a plain old file?
                           if ((-f $cachefile) && (-r $cachefile)) {
-                            &process_file($file, $cachefile);
+                            print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
+                            &process_file_new($file, $cachefile, @ignores);
                             $File::Find::prune = 1;
                             return;
                           }                            
@@ -1339,7 +1368,8 @@ sub collect_environment ($\@) {
                           if (/^.env-config.xml$/) {
                             # Can we read it? And is a plain old file?
                             if ((-f $_) && (-r $_)) {
-                              &process_file($File::Find::dir,$_);
+                              print STDERR "Processing $File::Find::dir/$_\n";
+                              &process_file_new($File::Find::dir,$_,@ignores);
                             }                            
                           }
                           },
@@ -1398,17 +1428,19 @@ sub update ($$$$$) {
 
 #####################################################################
 
-my $lockfile = "$ENV{HOME}/.env-tool.lock";
+my @lockfile = ();
 
 sub detect_lock () {
-  return (-e $lockfile);
+  my $lock = pop @lockfile;
+  return (-e $lock);
 }
 
 sub acquire_lock () {
-  if (-e $lockfile) {
+  my $lock = pop @lockfile;
+  if (-e $lock) {
     die "acquire_lock: lock already exists!";
   } else {
-    open(LOCK, ">$lockfile");
+    open(LOCK, ">$lock");
     print LOCK <<END;
 env-tool scanning in progress...
 Do not disturb -- unless somehow the owning 
@@ -1420,8 +1452,9 @@ END
 }
 
 sub remove_lock () {
-  if (-e $lockfile) {
-    if ((unlink $lockfile) != 1) {
+  my $lock = pop @lockfile;
+  if (-e $lock) {
+    if ((unlink $lock) != 1) {
       die "remove_lock: somehow failed to remove the lock!";
     }
   } else {
@@ -1432,11 +1465,15 @@ sub remove_lock () {
 #####################################################################
 
 # Does most of the actual work
-sub run_env_tool (\@\@$$$$$) {
+sub run_env_tool (\@\@$$$$$$) {
   my $dirs_tmp = shift @_;
   my @dirs = @$dirs_tmp;
   my $formats_tmp = shift @_;
   my @formats = @$formats_tmp;
+  my $outputdir = shift @_;
+  if(!(-d $outputdir)) {
+    die "run_env_tool: directory argument \"$outputdir\" is not a directory!";
+  } 
   my $safe = shift @_;
   my $debug = shift @_;
   my $test = shift @_;
@@ -1475,9 +1512,9 @@ sub run_env_tool (\@\@$$$$$) {
   # For each type of script, atomically update it.
   foreach my $format (@formats) {
     # Create a reasonably race-free temporary filename
-    my $tmp_file = "$ENV{HOME}/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
+    my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
     # Specifiy our destination file
-    my $dest_file = "$ENV{HOME}/.env-tool.".$format;
+    my $dest_file = "$outputdir/.env-tool.".$format;
     
     # Search and write to our temporary file
     &update($format, $tmp_file, $safe, $debug, $test);
@@ -1536,12 +1573,23 @@ sub config_signals () {
 # Did the user request help?
 my %cmdoptions = ();
 GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", 
-                         "safe", "debug", "test", "lock", "ignores=s@");
+                         "safe", "debug", "test", "lock", "ignores=s@","outputdir=s");
 
 # Check to see whether we need to print usage
 if($cmdoptions{h} || $cmdoptions{help}) {
   &print_usage();
 }
+
+my $outputdir = undef;
+if($cmdoptions{outputdir}) {
+  $outputdir = $cmdoptions{outputdir};
+} else {
+  $outputdir = $ENV{HOME};
+}
+if(!(-d $outputdir)) {
+  die "Output directory \"$outputdir\" is not a directory!";
+} 
+push @lockfile, "$outputdir/.env-tool.lock";
 
 # Check to see which format files we should generate
 my @formats = ();
@@ -1572,9 +1620,9 @@ if($cmdoptions{bg}) {
 } elsif ($cmdoptions{condbg}) {
   
   # Check to see whether scripts exist
-  if((-e "$ENV{HOME}/.env-tool.sh" && (grep ("sh", @formats))) || 
-     (-e "$ENV{HOME}/.env-tool.csh" && (grep ("csh", @formats))) || 
-     (-e "$ENV{HOME}/.env-tool.zsh" && (grep ("zsh", @formats)))) {
+  if((-e "$outputdir/.env-tool.sh" && (grep ("sh", @formats))) || 
+     (-e "$outputdir/.env-tool.csh" && (grep ("csh", @formats))) || 
+     (-e "$outputdir/.env-tool.zsh" && (grep ("zsh", @formats)))) {
     $pid = fork;
   } else {
     $pid = 0;
@@ -1599,7 +1647,8 @@ if($pid == 0) {
   }
 
   run_env_tool(@dirs, 
-               @formats, 
+               @formats,
+               $outputdir,
                $cmdoptions{safe}, 
                $cmdoptions{debug}, 
                $cmdoptions{test}, 
@@ -1748,6 +1797,10 @@ The options are:
 
 print usage information
 
+=item B<--outputdir> dir
+
+create files in this directory rather than in ~/. 
+
 =item B<--sh>
 
 only create ~/.env-tool.sh, a script for Bourne descended shells
@@ -1796,7 +1849,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 4 2005-08-02 18:54:17Z geoffw $
+$Id: env-tool 5 2005-08-02 19:28:03Z geoffw $
 
 =head1 AUTHOR
 
