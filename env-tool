@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 5 2005-08-02 19:28:03Z geoffw $
+# env-tool $Id: env-tool 6 2005-08-02 19:58:04Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -299,26 +299,6 @@ sub obtain_cm_path () {
   return @processed;
 }
 
-##############################################################################
-# Extend the aliases we are collecting.
-sub extend_aliases ($$) {
-  my $name = shift(@_);
-  if ((length $name) <= 0) {
-    die "extend_aliases: invalid name argument!";
-  }
-  my $value = shift(@_);
-  if ((length $value) <= 0) {
-    die "extend_aliases: invalid value argument for alias name $name!";
-  }
-  # Check to see whether there is an entry yet
-  if (!(exists $aliases{$name})) {
-    # Nope, initialize to empty list.
-    $aliases{$name} = ($value);
-  }
-        
-  my @current_mapping = $aliases{$name};
-  push @current_mapping, $value;
-}  
 
 ##############################################################################
 # Extend the aliases we are collecting.
@@ -329,12 +309,12 @@ sub extend_aliases_new ($$$\@) {
   }
   my $realdir = shift(@_);
   # Check that it is really a directory
-  if(!(-d $realdir)) {
+  if((defined $realdir) && !(-d $realdir)) {
     die "extend_aliases_new: invalid directory argument for alias $name!"
   }
   my $virtualdir = shift(@_);
   # Check that it is really a directory
-  if(!(-d $virtualdir)) {
+  if((defined $virtualdir) && !(-d $virtualdir)) {
     die "extend_aliases_new: invalid directory argument for alias $name!"
   }
   my $value = shift(@_);
@@ -458,20 +438,6 @@ sub extend_env_new ($$$$\@) {
 }
 
 ##############################################################################
-sub process_file ($$) {
-  my $dir = shift(@_);
-  # Check that it is actually a directory
-  if(!(-d $dir)) {
-    die "process_file: directory argument \"$dir\" is not a directory!";
-  }
-  my $file = shift(@_);
-  open(XML, $file);
-  my @temp = <XML>;
-  close XML; 
-  &process_config($dir,"@temp");
-}
-
-##############################################################################
 sub process_file_new ($$\@) {
   my $dir = shift(@_);
   # Check that it is actually a directory
@@ -492,186 +458,6 @@ sub process_file_new ($$\@) {
   my @temp = <XML>;
   close XML; 
   &process_config_new($dir,"@temp",@ignores);
-}
-
-##############################################################################
-
-# Code to process a environment configuration file
-sub process_config ($$) {
-  my $dir = shift(@_);
-  # Check that it is actually a directory
-  if(!(-d $dir)) {
-    die "process_config: directory argument \"$dir\" is not a directory!";
-  }
-  my $xml = shift(@_);
-  my @path = ();
-  my $current_variable = undef;
-  my $current_alias_name = undef;
-  my $current_alias_value = undef;
-  my $parser = new XML::Parser::Lite;
-
-  # Create a set of handler routines for XML::Parser::Lite
-  $parser->setHandlers
-    (
-     Start => sub {
-       shift;
-       my $element = shift;
-       my %attr = @_;
-       # If we are looking at an env-config element
-       if($element eq "env-config") {
-
-         # Make sure there is a version attribute
-         if(!(exists $attr{version})) {
-           die "env-config file is missing a version attribute.\n";
-         }
-         # Make sure that we understand this version
-         if($attr{version} ne "1.1") {
-           die "Attemping to use an incorrect version of env-tool ($attr{version} versus 1.1)!\n";
-         }
-       }
-
-       # If we are looking at a variable element
-       if($element eq "variable") {
-         # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "variable element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
-         $current_variable = $attr{name};
-       }
-       
-       # If we are looking at a alias element
-       if($element eq "alias") {
-         # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "alias element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
-         $current_alias_name = $attr{name};
-         $current_alias_value = $attr{value};
-       }
-       
-       # If we are looking at a relative alias element
-       if($element eq "relative-alias") {
-         # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "relative-alias element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
-         $current_alias_name = $attr{name};
-       }
-
-       # If we are looking at a variable element
-       if($element eq "absolute-variable") {
-         # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "absolute-variable element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
-         $current_variable = $attr{name};
-       }
-
-       # If we are looking at a variable element
-       if($element eq "kpathsea-variable") {
-         # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "kapthsea-variable element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
-         $current_variable = $attr{name};
-         if(grep($current_variable, @TEXINPUTS_like)) {
-           push @TEXINPUTS_like, $current_variable;
-         }
-       }
-
-       push @path, $element;
-     },
-
-     Char => sub {
-       shift;
-       my $text = "@_";
-
-       my $parent = pop @path;
-       push @path, $parent;
-
-       if((defined $current_variable) && ($parent eq "variable")) {
-         &extend_env($current_variable, $dir, $text);
-         undef $current_variable;
-       } elsif((defined $current_alias_name) && 
-               ($parent eq "relative-alias")) {
-         &extend_aliases($current_alias_name, $dir.$text);
-         undef $current_alias_name;
-       } elsif((defined $current_variable) && 
-               ($parent eq "kpathsea-variable")) {
-         &extend_env($current_variable, $dir, $text);
-         undef $current_variable;
-       } elsif((defined $current_variable) && 
-               ($parent eq "absolute-variable")) {
-         &extend_env($current_variable, undef, $text);
-         undef $current_variable;
-       } elsif(defined $current_variable) {
-         die "character data in an improper location.\n";
-       }
-     },
-
-     End => sub {
-       shift;
-       my $element = shift;
-
-       my $parent = pop @path;
-       if($element ne $parent) {
-         die "Somehow hit a mismatched tag.\n";
-       }
-
-       if($element eq "variable") {
-         if(defined $current_variable) {
-           &extend_env($current_variable, $dir, undef);
-           undef $current_variable;
-         }
-       }
-       
-       if($element eq "relative-alias") {
-         if(defined $current_alias_name) {
-           die "relative-alias element was empty.\n"
-         }
-       }
-       
-       if($element eq "alias") {
-         if(defined $current_alias_name) {
-           &extend_aliases($current_alias_name, $current_alias_value);
-           undef $current_alias_name;
-           undef $current_alias_value;
-         }
-       }
-
-       if($element eq "kpathsea-variable") {
-         if(defined $current_variable) {
-           &extend_env($current_variable, $dir, undef);
-           undef $current_variable;
-         }
-       }
-
-       if($element eq "absolute-variable") {
-         if(defined $current_variable) {
-           die "absolute-variable element was empty.\n"
-         }
-       }
-     },
-    );
-
-  # Parse the configuation file
-  $parser->parse($xml);
-
 }
 
 ##############################################################################
@@ -1335,7 +1121,7 @@ sub collect_environment ($\@) {
 
                           # Does this file match our ignores list?
                           if(&should_ignore_dir($file, @ignores)) {
-                              print STDERR "Ignoring .env-config files in: $File::Find::name\n";
+                              #print STDERR "Ignoring .env-config files in: $File::Find::name\n";
                               $File::Find::prune = 1;
                               return;
                           }    
@@ -1358,8 +1144,8 @@ sub collect_environment ($\@) {
                           my $cachefile = "$file/.env-cache.xml";
                           # Can we read it? And is a plain old file?
                           if ((-f $cachefile) && (-r $cachefile)) {
-                            print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
-                            &process_file_new($file, $cachefile, @ignores);
+                            #print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
+                            &process_file_new(getcwd, $cachefile, @ignores);
                             $File::Find::prune = 1;
                             return;
                           }                            
@@ -1368,8 +1154,8 @@ sub collect_environment ($\@) {
                           if (/^.env-config.xml$/) {
                             # Can we read it? And is a plain old file?
                             if ((-f $_) && (-r $_)) {
-                              print STDERR "Processing $File::Find::dir/$_\n";
-                              &process_file_new($File::Find::dir,$_,@ignores);
+                              #print STDERR "Processing $File::Find::dir/$_\n";
+                              &process_file_new(getcwd,$_,@ignores);
                             }                            
                           }
                           },
@@ -1849,7 +1635,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 5 2005-08-02 19:28:03Z geoffw $
+$Id: env-tool 6 2005-08-02 19:58:04Z geoffw $
 
 =head1 AUTHOR
 
