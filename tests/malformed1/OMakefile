@@ -1,0 +1,6 @@
+test: :effects: errors1.log
+	bash ./test.sh
+	diff ref-errors1 errors1.log
+
+clean:
+	$(RM) *.log
