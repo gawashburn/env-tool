@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 11 2005-08-03 01:12:28Z geoffw $
+# env-tool $Id: env-tool 12 2005-08-03 01:32:47Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -530,6 +530,18 @@ sub validate_parent ($\@\@) {
    die "$element element found underneath a $parent element. Should be one of: ",join(' ',@valid),".\n";
 }
 
+sub validate_attribute ($$\%) {
+  my $element = shift;
+  my $attrname = shift;
+  my %attr = %{shift @_};
+  
+  if(!(exists $attr{$attrname})) {
+    die "$element is missing a $attrname attribute.\n";
+  } else {
+    return $attr{$attrname}
+  }
+}
+
 ##############################################################################
 
 # Code to process a environment configuration file
@@ -560,11 +572,10 @@ sub process_config_new ($$$) {
        if($element eq "env-config") {
 
          # Make sure there is a version attribute
-         if(!(exists $attr{version})) {
-           die "env-config file is missing a version attribute.\n";
-         }
+         my $version = validate_attribute("env-config","version",%attr);
+
          # Make sure that we understand this version
-         if($attr{version} > 1.2) {
+         if($version > 1.2) {
            die "Attemping to use an incorrect version of env-tool ($attr{version} versus 1.2)!\n";
          }
        }
@@ -572,45 +583,51 @@ sub process_config_new ($$$) {
        # If we are looking at a directory element
        if($element eq "directory") {
          # Make sure we are structured properly
-         my @valid = ("env-config");
+         my @valid = ();
+         push @valid, "env-config";
          validate_parent("directory", @path, @valid);
-         $current_directory = $attr{name};
+         $current_directory = validate_attribute("directory","name",%attr);
        }
 
        # If we are looking at a variable element
        if($element eq "variable") {
          # Make sure we are structured properly
-         validate_parent("variable", @path, @{("directory","env-config")});
-         $current_variable = $attr{name};
+         my @valid = ("directory", "env-config");
+         validate_parent("variable", @path, @valid);
+         $current_variable = validate_attribute("variable","name",%attr);
        }
        
        # If we are looking at a alias element
        if($element eq "alias") {
          # Make sure we are structured properly
-         validate_parent("alias", @path, @{("directory","env-config")});
-         $current_alias_name = $attr{name};
-         $current_alias_value = $attr{value};
+         my @valid = ("directory", "env-config");
+         validate_parent("alias", @path, @valid);
+         $current_alias_name = validate_attribute("alias","name",%attr);
+         $current_alias_value = validate_attribute("alias","value",%attr);
        }
        
        # If we are looking at a relative alias element
        if($element eq "relative-alias") {
          # Make sure we are structured properly
-         validate_parent("relative-alias", @path, @{("directory","env-config")});
-         $current_alias_name = $attr{name};
+         my @valid = ("directory", "env-config");
+         validate_parent("relative-alias", @path, @valid);
+         $current_alias_name = validate_attribute("relative-alias","name",%attr);
        }
 
        # If we are looking at a variable element
        if($element eq "absolute-variable") {
          # Make sure we are structured properly
-         validate_parent("absolute-variable", @path, @{("directory","env-config")});
-         $current_variable = $attr{name};
+         my @valid = ("directory", "env-config");
+         validate_parent("absolute-variable", @path, @valid);
+         $current_variable = validate_attribute("absolute-variable","name",%attr);
        }
 
        # If we are looking at a variable element
        if($element eq "kpathsea-variable") {
          # Make sure we are structured properly
-         validate_parent("kpathsea-variable", @path, @{("directory","env-config")});
-         $current_variable = $attr{name};
+         my @valid = ("directory", "env-config");
+         validate_parent("kpathsea-variable", @path, @valid);
+         $current_variable = validate_attribute("kpathsea-variable","name",%attr);
          if(grep($current_variable, @TEXINPUTS_like)) {
            push @TEXINPUTS_like, $current_variable;
          }
@@ -1655,7 +1672,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 11 2005-08-03 01:12:28Z geoffw $
+$Id: env-tool 12 2005-08-03 01:32:47Z geoffw $
 
 =head1 AUTHOR
 
