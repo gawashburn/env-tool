@@ -1,0 +1,6 @@
+test:
+	bash ./test.sh
+	diff ref-cache ./dir2/.env-cache.xml
+
+clean:
+	$(RM) ./dir2/.*

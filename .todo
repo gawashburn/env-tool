@@ -1,9 +1,12 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 2 2005-08-01 19:45:15Z geoffw $
+        env-tool to-do list $Id: .todo 18 2005-08-03 20:48:52Z geoffw $
     </title>
-    <note priority="veryhigh" time="1122925452">
+    <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
+        <comment>
+            Initial caching support implemented.  Needs more testing however.
+        </comment>
     </note>
     <note priority="medium" time="1122925391">
         Write more documentation.

@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
+# env-tool $Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -42,7 +42,7 @@ use strict;
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
 #
-# $Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
+# $Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
 #
 # ======================================================================
 
@@ -932,7 +932,7 @@ sub process_config ($$$) {
        } elsif($element eq "alias") {
          if(defined $current_alias_name) {
            extend_aliases($current_alias_name, $current_alias_value, 
-                          $dir, undef, $ignores);
+                          $dir, $current_directory, $ignores);
            undef $current_alias_name;
            undef $current_alias_value;
          }
@@ -1385,7 +1385,8 @@ sub gen_cond_var ($$$$$$) {
 
 # Scan the specified directory and its children for configuration files, and
 # process them
-sub collect_environment ($$) {
+sub collect_environment ($$$) {
+    my $cache = shift;
     my $dir = shift;
     my $ignores = shift;
 
@@ -1417,16 +1418,19 @@ sub collect_environment ($$) {
                               return; 
                           }
                           
+                          # Are we building a cache file?
+                          if(!$cache) {
                           # Check for a cache file.  
                           # If we can read it, process it and prune the directory.
-                          my $cachefile = "$file/.env-cache.xml";
-                          # Can we read it? And is a plain old file?
-                          if ((-f $cachefile) && (-r $cachefile)) {
-                            #print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
-                            process_file getcwd, $cachefile, $ignores;
-                            $File::Find::prune = 1;
-                            return;
-                          }                            
+                            my $cachefile = "$file/.env-cache.xml";
+                            # Can we read it? And is a plain old file?
+                            if ((-f $cachefile) && (-r $cachefile)) {
+                              #print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
+                              process_file getcwd, $cachefile, $ignores;
+                              $File::Find::prune = 1;
+                              return;
+                            }
+                          }  
                           
                           # Are we looking at a configuration file?
                           if (/^.env-config.xml$/) {
@@ -1567,7 +1571,7 @@ sub run_env_tool (\@\@$$$$$$$) {
   }
 
   # Scan and collect environment information
-  foreach my $dir (@dirs) { collect_environment $dir, $ignores; }
+  foreach my $dir (@dirs) { collect_environment $cache, $dir, $ignores; }
 
   # Initialize the default environment
   init_default_environment();
@@ -1929,7 +1933,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
+$Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
 
 =head1 AUTHOR
 
