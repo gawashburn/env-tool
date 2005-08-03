@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
+# env-tool $Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -42,7 +42,7 @@ use strict;
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
 #
-# $Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
+# $Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
 #
 # ======================================================================
 
@@ -789,13 +789,6 @@ sub validate_attribute ($$\%) {
 
 ##############################################################################
 
-sub whitespace($) {
-  my $text = shift;
-  return ($text =~ /\s+/);
-}
-
-##############################################################################
-
 # Code to process a environment configuration file
 sub process_config ($$$) {
   my $dir = shift;
@@ -983,31 +976,31 @@ scan the current directory.
 
     -h, --help            print this message
     
-        --outputdir dir   create files in the specifid directory,
-                          rather than in ~/
+        --outputdir dir   set the output directory.  default is ~/
     
-        --sh              only create ~/.env-tool.sh, a script for 
+        --sh              only create outputdir/.env-tool.sh, a script for 
                           Bourne descended shells
                       
-        --csh             only create ~/.env-tool.csh, a script for 
+        --csh             only create outputdir/.env-tool.csh, a script for 
                           C-Shell descended shells
                       
-        --zsh             only create ~/.env-tool.zsh, a script for 
+        --zsh             only create outputdir/.env-tool.zsh, a script for 
                           optimized for Z-Shell
         
         --ignores re      prune the specified regular expression from
                           the search.  May be used any number of times.
 
         --lock            force locking so that only one instance can
-                          operate at a time
+                          operate at a time. creates a lockfile 
+                          outputdir/.env-tool.lock
                       
         --bg              run in the background. Only one instance of 
                           env-tool may run at a time if --lock is used
                       
-        --condbg          run in the background if ~/.env-tool.sh or 
-                          ~/.env-tool.csh already exist. Only one 
-                          instance of env-tool may run at a time
-                          if --lock is used
+        --condbg          run in the background if outputdir/.env-tool.sh,
+                          outputdir/.env-tool.csh, or outputdir/.env-tool.zsh
+                          already exist. Only one  instance of env-tool may 
+                          run at a time if --lock is used
                       
         --safe            produce shell scripts that attempt to not 
                           disturb the user's existing configuration
@@ -1016,6 +1009,10 @@ scan the current directory.
                           it is doing
                       
         --test            run but do not write output to a file. 
+        
+        --cache           instead of producing a shell script, output a cache
+                          file, outpdir/.env-cache.xml
+        
 
 Try `perldoc env-tool' for more information.
 END
@@ -1035,6 +1032,49 @@ sub init_default_environment () {
   # If we are going to extend CM_PATH or overwrite CM_PATH we should
   # use this
   $default_environment{CM_PATH} = [@cm_path];
+}
+
+##############################################################################
+### Generate a "cache" file
+
+sub gen_cache () {
+  my $result = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+  $result .= "<env-config version=\"1.2\">\n";
+  for(keys %directories) {
+    my $dir = $_;
+    $result .= "  <directory name=\"$dir\">\n";
+    for(keys %{$directories{$dir}}) {
+      my $tag = $_;
+      my @entries = @{$directories{$dir}{$tag}};
+      foreach my $entry (@entries) {
+        my %entry_hash = %{$entry};
+        if($tag eq "alias") {
+          $result .= "    <alias name=\"".$entry_hash{"name"}."\" value=\"".$entry_hash{"value"}."\" />\n";
+        } elsif ($tag eq "relative-alias") {
+          $result .= "    <relative-alias name=\"".$entry_hash{"name"}."\">".$entry_hash{"value"}."</relative-alias>\n";
+        } elsif ($tag eq "variable") {
+          if(defined $entry_hash{"body"}) {
+            $result .= "    <variable name=\"".$entry_hash{"name"}."\">".$entry_hash{"body"}."</variable>\n";
+          } else {
+            $result .= "    <variable name=\"".$entry_hash{"name"}."\" />\n";
+          }
+        } elsif ($tag eq "absolute-variable") {
+          $result .= "    <absolute-variable name=\"".$entry_hash{"name"}."\">".$entry_hash{"body"}."</absolute-variable>\n";
+        } elsif ($tag eq "kpathsea-variable") {
+          if(defined $entry_hash{"body"}) {
+            $result .= "    <kpathsea-variable name=\"".$entry_hash{"name"}."\">".$entry_hash{"body"}."</kpathsea-variable>\n";
+          } else {
+            $result .= "    <kpathsea-variable name=\"".$entry_hash{"name"}."\" />\n";
+          }
+        } else {
+          die "Unexpected entry type!";
+        }
+      }
+    }
+    $result .= "  </directory>\n";
+  }
+  $result .= "</env-config>\n";
+  return $result;
 }
 
 ##############################################################################
@@ -1238,41 +1278,6 @@ sub gen_cond_var_zsh ($$$$$) {
   
   return $result;
 }
-
-##############################################################################
-### Generate a "cache" file
-
-sub gen_prologue_cache () {
-  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<env-config version=\"1.1\">";
-}
-
-sub gen_epilogue_cache () {
-  return "</env-config>";
-}
-
-sub gen_cond_alias_cache ($$) {
-  # Don't need to validate any of the inputs because gen_cond_alias has 
-  # already done it for us.
-  my $name = shift @_;
-  my $value = shift @_;
-
-  return "  <alias name=\"$name\" value=\"$value\" />\n";
-}
-
-sub gen_cond_var_cache ($$) {
-  # Don't need to validate any of the inputs because gen_cond_var has 
-  # already done it for us.
-  my $variable = shift @_;
-  my $additions_array = shift @_;
-   
-  my $result = ""; 
-  for(@$additions_array) {
-    $result .="  <absolute-variable name=\"$variable\">$_</absolute-variable>\n";    
-  }
-  
-  return $result;
-}
-
 
 ##############################################################################
 ### Glue for all shells ##########
@@ -1522,7 +1527,7 @@ sub remove_lock () {
 #####################################################################
 
 # Does most of the actual work
-sub run_env_tool (\@\@$$$$$$) {
+sub run_env_tool (\@\@$$$$$$$) {
   my $dirs_tmp = shift @_;
   my @dirs = @$dirs_tmp;
   my $formats_tmp = shift @_;
@@ -1532,6 +1537,7 @@ sub run_env_tool (\@\@$$$$$$) {
     die "run_env_tool: directory argument \"$outputdir\" is not a directory!";
   } 
   my $safe = shift @_;
+  my $cache = shift @_;
   my $debug = shift @_;
   my $test = shift @_;
   my $lock = shift @_;
@@ -1564,24 +1570,39 @@ sub run_env_tool (\@\@$$$$$$) {
   foreach my $dir (@dirs) { collect_environment $dir, $ignores; }
 
   # Initialize the default environment
-  &init_default_environment();
+  init_default_environment();
 
-  # For each type of script, atomically update it.
-  foreach my $format (@formats) {
-    # Create a reasonably race-free temporary filename
-    my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
-    # Specifiy our destination file
-    my $dest_file = "$outputdir/.env-tool.".$format;
+  if($cache) {
+      # Create a reasonably race-free temporary filename
+      my $tmp_file = "$outputdir/.env-cache.".(unpack("H*", pack("Nn", rand, time, $$)));
+      # Specifiy our destination file
+      my $dest_file = "$outputdir/.env-cache.xml";
     
-    # Search and write to our temporary file
-    my %envtable = build_environment_variable_defs();
-    my @keypairs = build_alias_keypairs();
-    update_script $format, $tmp_file, $safe, $debug, $test, \%envtable, \@keypairs;
+      # Search and write to our temporary file
+      open(CACHE, ">$tmp_file");
+      print CACHE gen_cache();
+      close(CACHE);
+      
+      # Atomically update, on systems that have rename(2)
+      rename($tmp_file, $dest_file);
+  } else {
+    # For each type of script, atomically update it.
+    foreach my $format (@formats) {
+      # Create a reasonably race-free temporary filename
+      my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
+      # Specifiy our destination file
+      my $dest_file = "$outputdir/.env-tool.".$format;
     
-    # Atomically update, on systems that have rename(2)
-    rename($tmp_file, $dest_file);
+      # Search and write to our temporary file
+      my %envtable = build_environment_variable_defs();
+      my @keypairs = build_alias_keypairs();
+      update_script $format, $tmp_file, $safe, $debug, $test, \%envtable, \@keypairs;
+    
+      # Atomically update, on systems that have rename(2)
+      rename($tmp_file, $dest_file);
+    }
   }
-
+  
   if($lock) {
     # Eliminate the lock file
     remove_lock();
@@ -1631,7 +1652,7 @@ sub config_signals () {
    
 # Did the user request help?
 my %cmdoptions = ();
-GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", 
+GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", "cache", 
                          "safe", "debug", "test", "lock", "ignores=s@","outputdir=s");
 
 # Check to see whether we need to print usage
@@ -1708,6 +1729,7 @@ if($pid == 0) {
                @formats,
                $outputdir,
                $cmdoptions{safe}, 
+               $cmdoptions{cache}, 
                $cmdoptions{debug}, 
                $cmdoptions{test}, 
                $cmdoptions{lock},
@@ -1907,7 +1929,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
+$Id: env-tool 17 2005-08-03 20:30:19Z geoffw $
 
 =head1 AUTHOR
 
