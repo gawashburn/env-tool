@@ -1,0 +1,8 @@
+test:
+	bash ./test.sh
+	diff ref-sh ./dir2/.env-tool.sh
+	diff ref-csh ./dir2/.env-tool.csh
+	diff ref-zsh ./dir2/.env-tool.zsh
+
+clean:
+	$(RM) ./dir2/.*

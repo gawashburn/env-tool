@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 8 2005-08-02 21:37:01Z geoffw $
+# env-tool $Id: env-tool 9 2005-08-03 00:34:02Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -425,10 +425,11 @@ sub extend_env ($$$) {
     die "extend_env: invalid variable argument!";
   }
   my $dir = shift(@_);
+  # Disable for now
   # Check that it is really a directory
-  if(!(-d $dir)) {
-    die "extend_env: invalid directory argument for variable $variable!"
-  }
+  #if(!(-d $dir)) {
+  #  die "extend_env: invalid directory argument for variable $variable!"
+  #}
   my $text = shift(@_);
 
   # If the variable doesn't exist in the hash yet, set it to the empty list
@@ -475,11 +476,8 @@ sub extend_env_new ($$$$$) {
   if(!(-d $realdir)) {
     die "extend_env_neq: invalid directory argument for variable $variable!"
   }
+  # Virtual directories do not need to be real directories.
   my $virtualdir = shift;
-  # Check that it is really a directory
-  if((defined $virtualdir) && !(-d $virtualdir)) {
-    die "extend_env_new: invalid directory argument for variable $variable!"
-  }
   my $text = shift;
   my $ignores= shift;
                           
@@ -1664,7 +1662,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 8 2005-08-02 21:37:01Z geoffw $
+$Id: env-tool 9 2005-08-03 00:34:02Z geoffw $
 
 =head1 AUTHOR
 
