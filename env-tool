@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 9 2005-08-03 00:34:02Z geoffw $
+# env-tool $Id: env-tool 11 2005-08-03 01:12:28Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -510,6 +510,28 @@ sub process_file_new ($$$) {
 
 ##############################################################################
 
+sub validate_parent ($\@\@) {
+  my $element = shift;
+  my @path = @{shift @_};
+  my @valid = @{shift @_};
+  
+  my $parent = pop @path;
+  if(!(defined $parent)) {
+    die "$element found at the root of the document.\n";
+  }
+  
+  foreach my $tag (@valid) {
+    if($parent eq $tag) {
+      push @path, $parent;
+      return;
+    }
+  }
+ 
+   die "$element element found underneath a $parent element. Should be one of: ",join(' ',@valid),".\n";
+}
+
+##############################################################################
+
 # Code to process a environment configuration file
 sub process_config_new ($$$) {
   my $dir = shift;
@@ -550,36 +572,22 @@ sub process_config_new ($$$) {
        # If we are looking at a directory element
        if($element eq "directory") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if($parent ne "env-config") {
-           die "directory element not underneath an env-config element.\n";
-         } else {
-           push @path, $parent;
-         }
+         my @valid = ("env-config");
+         validate_parent("directory", @path, @valid);
          $current_directory = $attr{name};
        }
 
        # If we are looking at a variable element
        if($element eq "variable") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if(($parent ne "env-config") && ($parent ne "directory")) {
-           die "variable element not underneath an env-config or directory element.\n";
-         } else {
-           push @path, $parent;
-         }
+         validate_parent("variable", @path, @{("directory","env-config")});
          $current_variable = $attr{name};
        }
        
        # If we are looking at a alias element
        if($element eq "alias") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if(($parent ne "env-config") && ($parent ne "directory")) {
-           die "alias element not underneath an env-config or directory element.\n";
-         } else {
-           push @path, $parent;
-         }
+         validate_parent("alias", @path, @{("directory","env-config")});
          $current_alias_name = $attr{name};
          $current_alias_value = $attr{value};
        }
@@ -587,36 +595,21 @@ sub process_config_new ($$$) {
        # If we are looking at a relative alias element
        if($element eq "relative-alias") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if(($parent ne "env-config") && ($parent ne "directory")) {
-           die "relative-alias element not underneath an env-config or directory element.\n";
-         } else {
-           push @path, $parent;
-         }
+         validate_parent("relative-alias", @path, @{("directory","env-config")});
          $current_alias_name = $attr{name};
        }
 
        # If we are looking at a variable element
        if($element eq "absolute-variable") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if(($parent ne "env-config") && ($parent ne "directory")) {
-           die "absolute-variable element not underneath an env-config or directory element.\n";
-         } else {
-           push @path, $parent;
-         }
+         validate_parent("absolute-variable", @path, @{("directory","env-config")});
          $current_variable = $attr{name};
        }
 
        # If we are looking at a variable element
        if($element eq "kpathsea-variable") {
          # Make sure we are structured properly
-         my $parent = pop @path;
-         if(($parent ne "env-config") && ($parent ne "directory")) {
-           die "kapthsea-variable element not underneath an env-config or directory element.\n";
-         } else {
-           push @path, $parent;
-         }
+         validate_parent("kpathsea-variable", @path, @{("directory","env-config")});
          $current_variable = $attr{name};
          if(grep($current_variable, @TEXINPUTS_like)) {
            push @TEXINPUTS_like, $current_variable;
@@ -1662,7 +1655,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 9 2005-08-03 00:34:02Z geoffw $
+$Id: env-tool 11 2005-08-03 01:12:28Z geoffw $
 
 =head1 AUTHOR
 
