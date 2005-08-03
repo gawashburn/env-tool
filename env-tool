@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
+# env-tool $Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -42,7 +42,7 @@ use strict;
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
 #
-# $Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
+# $Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
 #
 # ======================================================================
 
@@ -878,6 +878,7 @@ sub process_config ($$$) {
      Char => sub {
        shift;
        my $text = shift;
+       use Data::Dumper; print STDERR Dumper($text);
        
        my $parent = pop @path;
 
@@ -1494,19 +1495,17 @@ sub update_script ($$$$$$$) {
 
 #####################################################################
 
-my @lockfile = ();
+my $lockfileref = undef;
 
 sub detect_lock () {
-  my $lock = pop @lockfile;
-  return (-e $lock);
+  return (-e $$lockfileref);
 }
 
 sub acquire_lock () {
-  my $lock = pop @lockfile;
-  if (-e $lock) {
+  if (-e $$lockfileref) {
     die "acquire_lock: lock already exists!";
   } else {
-    open(LOCK, ">$lock");
+    open(LOCK, ">$$lockfileref");
     print LOCK <<END;
 env-tool scanning in progress...
 Do not disturb -- unless somehow the owning 
@@ -1518,9 +1517,8 @@ END
 }
 
 sub remove_lock () {
-  my $lock = pop @lockfile;
-  if (-e $lock) {
-    if ((unlink $lock) != 1) {
+  if (-e $$lockfileref) {
+    if ((unlink $$lockfileref) != 1) {
       die "remove_lock: somehow failed to remove the lock!";
     }
   } else {
@@ -1673,7 +1671,8 @@ if($cmdoptions{outputdir}) {
 if(!(-d $outputdir)) {
   die "Output directory \"$outputdir\" is not a directory!";
 } 
-push @lockfile, "$outputdir/.env-tool.lock";
+
+$lockfileref = \"$outputdir/.env-tool.lock";
 
 # Check to see which format files we should generate
 my @formats = ();
@@ -1933,7 +1932,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 18 2005-08-03 20:48:52Z geoffw $
+$Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
 
 =head1 AUTHOR
 
