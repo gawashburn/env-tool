@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
+# env-tool $Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -42,7 +42,7 @@ use strict;
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
 #
-# $Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
+# $Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
 #
 # ======================================================================
 
@@ -249,9 +249,6 @@ my %default_environment = ();
 # for the name and value components of an alias declared in /usr/local/bin  
 my %directories = ();
 
-# Hash the environment variables we are extending
-my %environment = ();
-
 # Need the two follwing global variables due to stange locality issues.
 
 # Does the user have sml-cm in their path
@@ -312,6 +309,15 @@ sub obtain_cm_path () {
 
 ##############################################################################
 
+sub extend_texinputs_like ($) {
+  my $variable = shift;
+  if(!(grep($variable, @TEXINPUTS_like))) {
+    push @TEXINPUTS_like, $variable;
+  }
+}
+
+##############################################################################
+
 sub should_ignore_dir ($$) {
   my $dir = shift;
   my $ignores_tmp = shift;
@@ -363,6 +369,84 @@ sub add_relative_alias_entry ($$$$) {
         @{$directories{$dir}{"relative-alias"}} = ({"name" => $name, "value" => $value});
     } else {
         push @{$directories{$dir}{"relative-alias"}}, {"name" => $name, "value" => $value};
+    }
+  }
+} 
+
+sub add_variable_entry ($$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift;
+  my $name = shift;
+  my $ignores = shift;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"variable"})) {
+        @{$directories{$dir}{"variable"}} = ({"name" => $name});
+    } else {
+        push @{$directories{$dir}{"variable"}}, {"name" => $name};
+    }
+  }
+} 
+
+sub add_variable_body_entry ($$$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift;
+  my $name = shift;
+  my $body = shift;
+  my $ignores = shift;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"variable"})) {
+        @{$directories{$dir}{"variable"}} = ({"name" => $name, "body" => $body});
+    } else {
+        push @{$directories{$dir}{"variable"}}, {"name" => $name, "body" => $body};
+    }
+  }
+} 
+
+sub add_absolute_variable_entry ($$$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift;
+  my $name = shift;
+  my $body = shift;
+  my $ignores = shift;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"absolute-variable"})) {
+        @{$directories{$dir}{"absolute-variable"}} = ({"name" => $name, "body" => $body});
+    } else {
+        push @{$directories{$dir}{"absolute-variable"}}, {"name" => $name, "body" => $body};
+    }
+  }
+} 
+
+sub add_kpathsea_variable_entry ($$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift;
+  my $name = shift;
+  my $ignores = shift;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"kpathsea-variable"})) {
+        @{$directories{$dir}{"kpathsea-variable"}} = ({"name" => $name});
+    } else {
+        push @{$directories{$dir}{"kpathsea-variable"}}, {"name" => $name};
+    }
+  }
+} 
+
+sub add_kpathsea_variable_body_entry ($$$$) {
+  # No checks because we assume they have been done already.
+  my $dir = shift;
+  my $name = shift;
+  my $body = shift;
+  my $ignores = shift;
+    
+  if(!(should_ignore_dir($dir, $ignores))) {
+    if(!(exists $directories{$dir}{"kpathsea-variable"})) {
+        @{$directories{$dir}{"kpathsea-variable"}} = ({"name" => $name, "body" => $body});
+    } else {
+        push @{$directories{$dir}{"kpathsea-variable"}}, {"name" => $name, "body" => $body};
     }
   }
 } 
@@ -421,27 +505,165 @@ sub extend_relative_aliases ($$$$$) {
   }
 }  
 
+sub extend_variables ($$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_variables: invalid name argument!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_variables: invalid directory argument for variable name $name!"
+  }
+  # Don't need to check that virtual directories really exist
+  my $virtualdir = shift;
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_variable_entry($virtualdir, $name, $ignores);
+  } elsif (defined $realdir) {
+    add_variable_entry($realdir, $name, $ignores);
+  } else {
+    die "extend_variables: no valid directory argument provided!";
+  }
+}  
+
+sub extend_variables_body ($$$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_variables_body: invalid name argument!";
+  }
+  my $body = shift;
+  if ((length $body) <= 0) {
+    die "extend_variables_body: invalid body argument for variable name $name!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_variables_body: invalid directory argument for variable name $name!"
+  }
+  # Don't need to check that virtual directories really exist
+  my $virtualdir = shift;
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_variable_body_entry($virtualdir, $name, $body, $ignores);
+  } elsif (defined $realdir) {
+    add_variable_body_entry($realdir, $name, $body, $ignores);
+  } else {
+    die "extend_variables_body: no valid directory argument provided!";
+  }
+}  
+
+sub extend_kpathsea_variables ($$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_variables_body: invalid name argument!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_variables_body: invalid directory argument for variable name $name!"
+  }
+  # Don't need to check that virtual directories really exist
+  my $virtualdir = shift;
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_kpathsea_variable_entry($virtualdir, $name, $ignores);
+  } elsif (defined $realdir) {
+    add_kpathsea_variable_entry($realdir, $name, $ignores);
+  } else {
+    die "extend_variables: no valid directory argument provided!";
+  }
+}  
+
+sub extend_kpathsea_variables_body ($$$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_kpathsea_variables_body: invalid name argument!";
+  }
+  my $body = shift;
+  if ((length $body) <= 0) {
+    die "extend_kpathsea_variables_body: invalid body argument for variable name $name!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_kpathsea_variables_body: invalid directory argument for variable name $name!"
+  }
+  # Don't need to check that virtual directories really exist
+  my $virtualdir = shift;
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_kpathsea_variable_body_entry($virtualdir, $name, $body, $ignores);
+  } elsif (defined $realdir) {
+    add_kpathsea_variable_body_entry($realdir, $name, $body, $ignores);
+  } else {
+    die "extend_kpathsea_variables_body: no valid directory argument provided!";
+  }
+}  
+
+sub extend_absolute_variables ($$$$$) {
+  my $name = shift;
+  if ((length $name) <= 0) {
+    die "extend_absolute_variables: invalid name argument!";
+  }
+  my $body = shift;
+  if ((length $body) <= 0) {
+    die "extend_absolute_variables: invalid body argument for variable name $name!";
+  }
+  my $realdir = shift;
+  # Check that it is really a directory
+  if((defined $realdir) && !(-d $realdir)) {
+    die "extend_absolute_variables: invalid directory argument for variable name $name!"
+  }
+  # Don't need to check that virtual directories really exist
+  my $virtualdir = shift;
+  my $ignores = shift;
+
+  if (defined $virtualdir) {
+    add_absolute_variable_entry($virtualdir, $name, $body, $ignores);
+  } elsif (defined $realdir) {
+    add_absolute_variable_entry($realdir, $name, $body, $ignores);
+  } else {
+    die "extend_absolute_variables: no valid directory argument provided!";
+  }
+}  
+
 ##############################################################################
 # Extend the new environment we are building.
-sub extend_env ($$$) {
 
-  my $variable = shift(@_);
-  # Check that it is a valid variable name
-  if ((length $variable) <= 0) {
-    die "extend_env: invalid variable argument!";
-  }
-  my $dir = shift(@_);
-  # Disable for now
-  # Check that it is really a directory
-  #if(!(-d $dir)) {
-  #  die "extend_env: invalid directory argument for variable $variable!"
-  #}
-  my $text = shift(@_);
+sub build_alias_keypairs () {
+  my @keypairs = ();
+  for(keys %directories) {
+    my $dir = $_;
+        if(defined $directories{$dir}{"alias"}) {
+          my @entries = @{$directories{$dir}{"alias"}};
+          foreach my $entry (@entries) {
+            my %entry_hash = %{$entry};
+            my @pair = ($entry_hash{"name"}, $entry_hash{"value"});
+            push @keypairs, \@pair; 
+          }
+        }
+        if(defined $directories{$dir}{"relative-alias"}) {
+          my @entries = @{$directories{$dir}{"relative-alias"}};
+          foreach my $entry (@entries) {
+            my %entry_hash = %{$entry};
+            my @pair = ($entry_hash{"name"}, $dir."/".$entry_hash{"value"});
+            push @keypairs, \@pair; 
+          }
+        }
+      }
+  return @keypairs;
+}
 
-  # If the variable doesn't exist in the hash yet, set it to the empty list
-  if(!(exists $environment{$variable})) {
-    $environment{$variable} = [];
-  }
+sub extend_environment_variable_table ($$$$) {
+  my $variable = shift;
+  my $dir = shift;
+  my $text = shift;
+  my $tableref = shift;
 
   my $separator = undef;
   if(!(defined $dir)) {
@@ -451,51 +673,68 @@ sub extend_env ($$$) {
     $separator = "/";
   }
 
+  if(!(defined ${$tableref}{$variable})) {
+    ${$tableref}{$variable} = [];
+  }
+
   # If it is a TEXINPUTS-like variable we want to check if it is a //
   if(grep($variable, @TEXINPUTS_like)) {
     if(defined $text) {
       if($text eq "//") {
-        push @{$environment{$variable}}, ($dir.$text);
+        push @{${$tableref}{$variable}}, ($dir.$text);
       } else {
-        push @{$environment{$variable}}, ($dir.$separator.$text);
+        push @{${$tableref}{$variable}}, ($dir.$separator.$text);
       }
     } else {
-      push @{$environment{$variable}}, ($dir);
+        push @{${$tableref}{$variable}}, ($dir);
     }
   } else {
     if(defined $text) {
-      push @{$environment{$variable}}, ($dir.$separator.$text);
+      push @{${$tableref}{$variable}}, ($dir.$separator.$text);
     } else {
-      push @{$environment{$variable}}, ($dir);
+      push @{${$tableref}{$variable}}, ($dir);
     }
   }
 }
 
-sub extend_env_new ($$$$$) {
-  my $variable = shift;
-  # Check that it is a valid variable name
-  if ((length $variable) <= 0) {
-    die "extend_env_new: invalid variable argument!";
-  }
-  my $realdir = shift;
-  # Check that it is really a directory
-  if(!(-d $realdir)) {
-    die "extend_env_neq: invalid directory argument for variable $variable!"
-  }
-  # Virtual directories do not need to be real directories.
-  my $virtualdir = shift;
-  my $text = shift;
-  my $ignores= shift;
-                          
-  # Does this file match our ignores list?
-  if(defined $virtualdir) {
-    if(!(&should_ignore_dir($virtualdir, $ignores))) {
-      extend_env($variable, $virtualdir, $text);
-    }    
-  } else {
-    extend_env($variable, $realdir, $text);
-  }
+sub build_environment_variable_defs () {
+  my %table = ();
   
+  for(keys %directories) {
+    my $dir = $_;
+    if(defined $directories{$dir}{"variable"}) {
+      my @entries = @{$directories{$dir}{"variable"}};      
+      foreach my $entry (@entries) {
+        my %entry_hash = %{$entry};
+        if(defined $entry_hash{"body"}) {
+          extend_environment_variable_table ($entry_hash{"name"}, $dir, $entry_hash{"body"}, \%table);
+        } else {
+          extend_environment_variable_table ($entry_hash{"name"}, $dir, undef, \%table);
+        }
+      }
+    }
+    if(defined $directories{$dir}{"absolute-variable"}) {
+      my @entries = @{$directories{$dir}{"absolute-variable"}};      
+      foreach my $entry (@entries) {
+        my %entry_hash = %{$entry};
+        extend_environment_variable_table ($entry_hash{"name"}, undef, $entry_hash{"body"}, \%table);
+      }
+    }
+    if(defined $directories{$dir}{"kpathsea-variable"}) {
+      my @entries = @{$directories{$dir}{"kpathsea-variable"}};      
+      foreach my $entry (@entries) {
+        my %entry_hash = %{$entry};
+        extend_texinputs_like($entry_hash{"name"});
+        if(defined $entry_hash{"body"}) {
+          extend_environment_variable_table ($entry_hash{"name"}, $dir, $entry_hash{"body"}, \%table);
+        } else {
+          extend_environment_variable_table ($entry_hash{"name"}, $dir, undef, \%table);
+        }
+      }
+    }
+  }
+
+  return %table;
 }
 
 ##############################################################################
@@ -635,9 +874,7 @@ sub process_config ($$$) {
          my @valid = ("directory", "env-config");
          validate_parent("kpathsea-variable", @path, @valid);
          $current_variable = validate_attribute("kpathsea-variable","name",%attr);
-         if(grep($current_variable, @TEXINPUTS_like)) {
-           push @TEXINPUTS_like, $current_variable;
-         }
+         extend_texinputs_like($current_variable);
        } else {
          die "unexpected $element element in the input!";
        }
@@ -652,7 +889,7 @@ sub process_config ($$$) {
        my $parent = pop @path;
 
        if((defined $current_variable) && ($parent eq "variable")) {
-         &extend_env_new($current_variable, $dir, $current_directory, $text, $ignores);
+         extend_variables_body($current_variable, $text, $dir, $current_directory, $ignores);
          undef $current_variable;
        } elsif((defined $current_alias_name) && 
                ($parent eq "relative-alias")) {
@@ -660,11 +897,11 @@ sub process_config ($$$) {
          undef $current_alias_name;
        } elsif((defined $current_variable) && 
                ($parent eq "kpathsea-variable")) {
-         &extend_env_new($current_variable, $dir, $current_directory, $text, $ignores);
+         extend_kpathsea_variables_body($current_variable, $text, $dir, $current_directory, $ignores);
          undef $current_variable;
        } elsif((defined $current_variable) && 
                ($parent eq "absolute-variable")) {
-         &extend_env_new($current_variable, undef, $current_directory, $text, $ignores);
+         extend_absolute_variables($current_variable, $text, $dir, $current_directory, $ignores);
          undef $current_variable;
        }
        # Should really check for invalid character data but this causes all sorts of 
@@ -679,41 +916,46 @@ sub process_config ($$$) {
        my $parent = pop @path;
        if($element ne $parent) {
          die "Somehow hit a mismatched tag.\n";
-       }
-
-       if($element eq "variable") {
+       } 
+       if($element eq "env-config") {
+         #NOP
+       } elsif($element eq "directory") {
+         if(defined $current_directory) {
+           undef $current_directory;
+         } else {
+           die "Somehow hit a closing directory tag, but the current directory was not defined!\n";
+         }
+         
+       } elsif($element eq "variable") {
          if(defined $current_variable) {
-           extend_env_new($current_variable, $dir, $current_directory, undef, $ignores);
+           extend_variables($current_variable, $dir, $current_directory, $ignores);
            undef $current_variable;
          }
-       }
-       
-       if($element eq "relative-alias") {
+         
+       } elsif($element eq "relative-alias") {
          if(defined $current_alias_name) {
-           die "relative-alias element was empty.\n"
+           die "relative-alias element was empty.\n";
          }
-       }
-       
-       if($element eq "alias") {
+       } elsif($element eq "alias") {
          if(defined $current_alias_name) {
            extend_aliases($current_alias_name, $current_alias_value, 
                           $dir, undef, $ignores);
            undef $current_alias_name;
            undef $current_alias_value;
          }
-       }
-
-       if($element eq "kpathsea-variable") {
+         
+       } elsif($element eq "kpathsea-variable") {
          if(defined $current_variable) {
-           &extend_env_new($current_variable, $dir, $current_directory, undef, $ignores);
+           extend_kpathsea_variable($current_variable, $dir, $current_directory, $ignores);
            undef $current_variable;
          }
-       }
-
-       if($element eq "absolute-variable") {
+         
+       } elsif($element eq "absolute-variable") {
          if(defined $current_variable) {
-           die "absolute-variable element was empty.\n"
+           die "absolute-variable element was empty.\n";
          }
+       } else {
+        die "unexpected closing element $element.\n";
        }
      },
     );
@@ -1194,64 +1436,46 @@ sub collect_environment ($$) {
 }
 
 # Write out a script based upon the environment information we have collected
-sub update ($$$$$) {
-    my $format = shift @_;
-    my $output = shift @_;
-    my $safe = shift @_;
-    my $debug = shift @_;
-    my $testing = shift @_;
+sub update_script ($$$$$$$) {
+    my $format = shift;
+    my $output = shift;
+    my $safe = shift;
+    my $debug = shift;
+    my $testing = shift;
+    my $envtableref = shift;
+    my $keypairref = shift;
 
     if(!$testing) {
       open (OUTPUT, ">$output");
       print OUTPUT gen_prologue($format);
     }
 
-    for(keys %environment) {
+    for(keys %{$envtableref}) {
         #print STDERR "_: [$_]\n";
         if(!(exists $default_environment{$_})) {
             $default_environment{$_} = [];
         }
 
         #print STDERR "environment{_}: [@{$environment{$_}}]\n";
-        my $default = join(":", (@{$default_environment{$_}}, @{$environment{$_}}));
+        my $default = join(":", (@{$default_environment{$_}}, @{${$envtableref}{$_}}));
         #print STDERR "default: [$default]\n";
 
-        my $result = gen_cond_var($format, $_, $environment{$_}, $default, $safe, $debug);
+        my $result = gen_cond_var($format, $_, ${$envtableref}{$_}, $default, $safe, $debug);
         if(!$testing) {
           print OUTPUT $result, "\n";
         }
     }
     
     # Create aliases
-    if(!$safe) {
-      for(keys %directories) {
-        my $dir = $_;
-        if(defined $directories{$dir}{"alias"}) {
-          my @entries = @{$directories{$dir}{"alias"}};
-          foreach my $entry (@entries) {
-            my %entry_hash = %{$entry};
-            my $result = gen_cond_alias($format, $entry_hash{"name"}, 
-                                        $entry_hash{"value"}, $debug);
-            if (!$testing) {
-              print OUTPUT $result;
-            }
-          }
-        }
-        if(defined $directories{$dir}{"relative-alias"}) {
-          my @entries = @{$directories{$dir}{"relative-alias"}};
-          foreach my $entry (@entries) {
-            my %entry_hash = %{$entry};
-            my $result = gen_cond_alias($format, $entry_hash{"name"}, 
-                                      $dir."/".$entry_hash{"value"}, $debug);
-            if (!$testing) {
-              print OUTPUT $result;
-            }
-          }
+    if(!$safe) { 
+      foreach my $pair (@{$keypairref}) {
+        my ($name, $value) = @{$pair};
+        my $result = gen_cond_alias($format, $name, $value, $debug);
+        if (!$testing) {
+          print OUTPUT $result;
         }
       }
-    }  
-    
-    #print STDERR "_: [$_]\n";
+    }
 
     if(!$testing) {
       print OUTPUT gen_epilogue($format);
@@ -1350,7 +1574,9 @@ sub run_env_tool (\@\@$$$$$$) {
     my $dest_file = "$outputdir/.env-tool.".$format;
     
     # Search and write to our temporary file
-    &update($format, $tmp_file, $safe, $debug, $test);
+    my %envtable = build_environment_variable_defs();
+    my @keypairs = build_alias_keypairs();
+    update_script $format, $tmp_file, $safe, $debug, $test, \%envtable, \@keypairs;
     
     # Atomically update, on systems that have rename(2)
     rename($tmp_file, $dest_file);
@@ -1681,7 +1907,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
+$Id: env-tool 16 2005-08-03 20:03:34Z geoffw $
 
 =head1 AUTHOR
 
