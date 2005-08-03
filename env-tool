@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
+# env-tool $Id: env-tool 20 2005-08-03 22:05:37Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -42,7 +42,7 @@ use strict;
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
 #
-# $Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
+# $Id: env-tool 20 2005-08-03 22:05:37Z geoffw $
 #
 # ======================================================================
 
@@ -878,7 +878,7 @@ sub process_config ($$$) {
      Char => sub {
        shift;
        my $text = shift;
-       use Data::Dumper; print STDERR Dumper($text);
+       #use Data::Dumper; print STDERR Dumper($text);
        
        my $parent = pop @path;
 
@@ -897,9 +897,12 @@ sub process_config ($$$) {
                ($parent eq "absolute-variable")) {
          extend_absolute_variables($current_variable, $text, $dir, $current_directory, $ignores);
          undef $current_variable;
-       }
+       
        # Should really check for invalid character data but this causes all sorts of 
        # bizarre problems with XML::Parser::Lite
+       } #elsif($text !~ /\s*/s) {
+         #die "unexpected character data inside an $parent element\n";
+       #}
        push @path, $parent;
      },
 
@@ -1932,7 +1935,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 19 2005-08-03 22:02:32Z geoffw $
+$Id: env-tool 20 2005-08-03 22:05:37Z geoffw $
 
 =head1 AUTHOR
 
