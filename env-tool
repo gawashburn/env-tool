@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 12 2005-08-03 01:32:47Z geoffw $
+# env-tool $Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -35,11 +35,14 @@ use strict;
 # file: /usr/local/lib/perl5/site_perl/5.6.1/XML/Parser/Lite.pm
 # Remember to delete __END__ and everything after it.
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 # ======================================================================
 #
 # Copyright (C) 2000-2001 Paul Kulchenko (paulclinger@yahoo.com)
 # SOAP::Lite is free software; you can redistribute it
 # and/or modify it under the same terms as Perl itself.
+#
+# $Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
 #
 # ======================================================================
 
@@ -47,7 +50,7 @@ package XML::Parser::Lite;
 
 use strict;
 use vars qw($VERSION);
-$VERSION = '0.20';
+$VERSION = sprintf("%d.%s", map {s/_//g; $_} q$Name: release-0_60-public $ =~ /-(\d+)_([\d_]+)/);
 
 sub new { 
   my $self = shift;
@@ -66,7 +69,7 @@ sub setHandlers {
   no strict 'refs'; local $^W;
   # clear all handlers if called without parameters
   unless (@_) { foreach (qw(Start End Char Final Init)) { *$_ = sub {} } }
-  while (@_) { my($name => $func) = splice(@_, 0, 2); *$name = $func }
+  while (@_) { my($name => $func) = splice(@_, 0, 2); *$name = defined $func ? $func : sub {} }
   return $self;
 }
 
@@ -202,6 +205,9 @@ use Getopt::Long;
 use Cwd;
 
 ##############################################################################
+
+# What version of env-tool is this?
+my $env_version = 1.2;
 
 # List of TEXINPUTS like environment variables
 # *** Whether a variable to be extended is one of the variables
@@ -493,11 +499,11 @@ sub extend_env_new ($$$$$) {
 }
 
 ##############################################################################
-sub process_file_new ($$$) {
+sub process_file ($$$) {
   my $dir = shift;
   # Check that it is actually a directory
   if(!(-d $dir)) {
-    die "process_file_new: directory argument \"$dir\" is not a directory!";
+    die "process_file: directory argument \"$dir\" is not a directory!";
   }
   my $file = shift;
   my $ignores = shift;
@@ -505,7 +511,7 @@ sub process_file_new ($$$) {
   open(XML, $file);
   my @temp = <XML>;
   close XML; 
-  &process_config_new($dir,"@temp",$ignores);
+  &process_config($dir,"@temp",$ignores);
 }
 
 ##############################################################################
@@ -544,8 +550,15 @@ sub validate_attribute ($$\%) {
 
 ##############################################################################
 
+sub whitespace($) {
+  my $text = shift;
+  return ($text =~ /\s+/);
+}
+
+##############################################################################
+
 # Code to process a environment configuration file
-sub process_config_new ($$$) {
+sub process_config ($$$) {
   my $dir = shift;
   # Check that it is actually a directory
   if(!(-d $dir)) {
@@ -568,62 +581,56 @@ sub process_config_new ($$$) {
        shift;
        my $element = shift;
        my %attr = @_;
+
        # If we are looking at an env-config element
        if($element eq "env-config") {
 
          # Make sure there is a version attribute
-         my $version = validate_attribute("env-config","version",%attr);
+         my $version = validate_attribute "env-config", "version", %attr;
 
          # Make sure that we understand this version
-         if($version > 1.2) {
-           die "Attemping to use an incorrect version of env-tool ($attr{version} versus 1.2)!\n";
+         if($version > $env_version) {
+           die "Attemping to use an incorrect version of env-tool ($version versus $env_version)!\n";
          }
-       }
-       
        # If we are looking at a directory element
-       if($element eq "directory") {
+       } elsif($element eq "directory") {
          # Make sure we are structured properly
          my @valid = ();
          push @valid, "env-config";
          validate_parent("directory", @path, @valid);
          $current_directory = validate_attribute("directory","name",%attr);
-       }
 
        # If we are looking at a variable element
-       if($element eq "variable") {
+       } elsif($element eq "variable") {
          # Make sure we are structured properly
          my @valid = ("directory", "env-config");
          validate_parent("variable", @path, @valid);
          $current_variable = validate_attribute("variable","name",%attr);
-       }
        
        # If we are looking at a alias element
-       if($element eq "alias") {
+       } elsif($element eq "alias") {
          # Make sure we are structured properly
          my @valid = ("directory", "env-config");
          validate_parent("alias", @path, @valid);
          $current_alias_name = validate_attribute("alias","name",%attr);
          $current_alias_value = validate_attribute("alias","value",%attr);
-       }
        
        # If we are looking at a relative alias element
-       if($element eq "relative-alias") {
+       } elsif($element eq "relative-alias") {
          # Make sure we are structured properly
          my @valid = ("directory", "env-config");
          validate_parent("relative-alias", @path, @valid);
          $current_alias_name = validate_attribute("relative-alias","name",%attr);
-       }
 
        # If we are looking at a variable element
-       if($element eq "absolute-variable") {
+       } elsif($element eq "absolute-variable") {
          # Make sure we are structured properly
          my @valid = ("directory", "env-config");
          validate_parent("absolute-variable", @path, @valid);
          $current_variable = validate_attribute("absolute-variable","name",%attr);
-       }
 
        # If we are looking at a variable element
-       if($element eq "kpathsea-variable") {
+       } elsif($element eq "kpathsea-variable") {
          # Make sure we are structured properly
          my @valid = ("directory", "env-config");
          validate_parent("kpathsea-variable", @path, @valid);
@@ -631,17 +638,18 @@ sub process_config_new ($$$) {
          if(grep($current_variable, @TEXINPUTS_like)) {
            push @TEXINPUTS_like, $current_variable;
          }
+       } else {
+         die "unexpected $element element in the input!";
        }
-
+       
        push @path, $element;
      },
 
      Char => sub {
        shift;
-       my $text = "@_";
-
+       my $text = shift;
+       
        my $parent = pop @path;
-       push @path, $parent;
 
        if((defined $current_variable) && ($parent eq "variable")) {
          &extend_env_new($current_variable, $dir, $current_directory, $text, $ignores);
@@ -658,9 +666,10 @@ sub process_config_new ($$$) {
                ($parent eq "absolute-variable")) {
          &extend_env_new($current_variable, undef, $current_directory, $text, $ignores);
          undef $current_variable;
-       } elsif((defined $current_variable)||(defined $current_alias_name)) {
-         die "character data in an improper location.\n";
        }
+       # Should really check for invalid character data but this causes all sorts of 
+       # bizarre problems with XML::Parser::Lite
+       push @path, $parent;
      },
 
      End => sub {
@@ -1167,7 +1176,7 @@ sub collect_environment ($$) {
                           # Can we read it? And is a plain old file?
                           if ((-f $cachefile) && (-r $cachefile)) {
                             #print STDERR "Reading .env-cache.xml file in: $File::Find::name\n";
-                            &process_file_new(getcwd, $cachefile, $ignores);
+                            process_file getcwd, $cachefile, $ignores;
                             $File::Find::prune = 1;
                             return;
                           }                            
@@ -1177,7 +1186,7 @@ sub collect_environment ($$) {
                             # Can we read it? And is a plain old file?
                             if ((-f $_) && (-r $_)) {
                               #print STDERR "Processing $File::Find::dir/$_\n";
-                              &process_file_new(getcwd,$_, $ignores);
+                              process_file getcwd, $_, $ignores;
                             }                            
                           }
                           },
@@ -1672,7 +1681,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 12 2005-08-03 01:32:47Z geoffw $
+$Id: env-tool 15 2005-08-03 18:16:58Z geoffw $
 
 =head1 AUTHOR
 

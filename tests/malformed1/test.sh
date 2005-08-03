@@ -5,4 +5,5 @@ env-tool --sh --csh --zsh --outputdir . --debug ./dir3 >& errors3.log
 env-tool --sh --csh --zsh --outputdir . --debug ./dir4 >& errors4.log
 env-tool --sh --csh --zsh --outputdir . --debug ./dir5 >& errors5.log
 env-tool --sh --csh --zsh --outputdir . --debug ./dir6 >& errors6.log
+env-tool --sh --csh --zsh --outputdir . --debug ./dir7 >& errors7.log
 exit 0
