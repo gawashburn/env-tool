@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 22 2005-08-05 16:54:28Z geoffw $
+# env-tool $Id: env-tool 23 2005-08-05 17:25:12Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -1348,10 +1348,12 @@ sub verbosemsg ($) {
 my $lockfileref = undef;
 
 sub detect_lock () {
+  verbosemsg("Checking to see if the lockfile \"$$lockfileref\" exists.");
   return (-e $$lockfileref);
 }
 
 sub acquire_lock () {
+  verbosemsg("Attempting to acquire the lockfile \"$$lockfileref\".");
   if (-e $$lockfileref) {
     die "acquire_lock: lock already exists!";
   } else {
@@ -1363,10 +1365,12 @@ env-tool process has died without cleaning up.
 END
 
    close(LOCK);
+   verbosemsg("Lockfile \"$$lockfileref\" acquired");
   }
 }
 
 sub remove_lock () {
+  verbosemsg("Attempting to remove the lockfile \"$$lockfileref\".");
   if (-e $$lockfileref) {
     if ((unlink $$lockfileref) != 1) {
       die "remove_lock: somehow failed to remove the lock!";
@@ -1374,26 +1378,27 @@ sub remove_lock () {
   } else {
     die "remove_lock: tried to remove nonexistant lock!"
   }
+  verbosemsg("Lockfile \"$$lockfileref\" removed.");
 }
 
 #####################################################################
 
 # Does most of the actual work
 sub run_env_tool (\@\@$$$$$$$) {
-  my $dirs_tmp = shift @_;
+  my $dirs_tmp = shift;
   my @dirs = @$dirs_tmp;
-  my $formats_tmp = shift @_;
+  my $formats_tmp = shift;
   my @formats = @$formats_tmp;
-  my $outputdir = shift @_;
+  my $outputdir = shift;
   if(!(-d $outputdir)) {
     die "run_env_tool: directory argument \"$outputdir\" is not a directory!";
   } 
-  my $safe = shift @_;
-  my $cache = shift @_;
-  my $debug = shift @_;
-  my $test = shift @_;
-  my $lock = shift @_;
-  my $ignores = shift @_;
+  my $safe = shift;
+  my $cache = shift;
+  my $debug = shift;
+  my $test = shift;
+  my $lock = shift;
+  my $ignores = shift;
 
   # Create a lock file so that we don't wind up with multiple instances
   # scanning when several terminals are opened in a short span of time
@@ -1464,6 +1469,7 @@ sub run_env_tool (\@\@$$$$$$$) {
 #####################################################################
 
 sub config_signals () {
+  verbosemsg("Setting up signal handlers.");
   # Setup signal handlers to clean up lock files.
   sub catch_signal {
     my $signame = shift;
@@ -1508,6 +1514,8 @@ GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", "cache
                          "verbose", "safe", "debug", "test", "lock", "ignores=s@",
                          "outputdir=s");
 
+$verboseref = \$cmdoptions{verbose};
+
 # Check to see whether we need to print usage
 if($cmdoptions{h} || $cmdoptions{help}) {
   &print_usage();
@@ -1517,6 +1525,7 @@ my $outputdir = undef;
 if($cmdoptions{outputdir}) {
   $outputdir = $cmdoptions{outputdir};
 } else {
+  verbosemsg("No output directory specified, using $ENV{HOME}");
   $outputdir = $ENV{HOME};
 }
 if(!(-d $outputdir)) {
@@ -1524,8 +1533,6 @@ if(!(-d $outputdir)) {
 } 
 
 $lockfileref = \"$outputdir/.env-tool.lock";
-
-$verboseref = \$cmdoptions{verbose};
 
 # Check to see which format files we should generate
 my @formats = ();
@@ -1785,7 +1792,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 22 2005-08-05 16:54:28Z geoffw $
+$Id: env-tool 23 2005-08-05 17:25:12Z geoffw $
 
 =head1 AUTHOR
 

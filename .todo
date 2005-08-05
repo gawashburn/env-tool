@@ -1,6 +1,6 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 18 2005-08-03 20:48:52Z geoffw $
+        env-tool to-do list $Id: .todo 23 2005-08-05 17:25:12Z geoffw $
     </title>
     <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
@@ -16,5 +16,8 @@
     </note>
     <note priority="medium" time="1122925473">
         Write schemas for validating .env-config.xml files.
+    </note>
+    <note priority="medium" time="1123261919">
+        Add --ignorecaches option.
     </note>
 </todo>
