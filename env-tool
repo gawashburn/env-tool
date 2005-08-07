@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 24 2005-08-07 00:23:55Z geoffw $
+# env-tool $Id: env-tool 26 2005-08-07 19:09:08Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -24,6 +24,7 @@ exec perl -S -x -- "$0" "$@"
 
 use English;
 
+# Try to minimize Perl foolishness.
 use strict;
 
 # For XML Parsing
@@ -47,26 +48,16 @@ my $env_version = 1.2;
 # *** Whether a variable to be extended is one of the variables
 # handled by the kpathsea environment should be specified in the
 # .env-config files, not here.
-my @TEXINPUTS_like = ("TEXINPUTS",
-                      "DVIPSHEADERS",
-                      "BSTINPUTS",
-                      "BIBINPUTS",
-                      "AFMFONTS",
-                      "MFBASES",
-                      "TEXBIB",
-                      "TEXCONFIG",
-                      "TEXFORMATS",
-                      "TEXINDEXSTYLE",
-                      "TEXFONTMAPS",
-                      "MFINPUTS",
-                      "TEXFONTS",
-                      "T1FONTS",
-                      "TTFONTS",
-                      "VFFONTS",
-                      "XDVIFONTS",
-                      "GLYPHFONTS",
-                      "ENCFONTS",
-                      "TEXPSHEADERS");
+my @TEXINPUTS_like = ("TEXINPUTS", "DVIPSHEADERS", "BSTINPUTS",
+                      "BIBINPUTS", "AFMFONTS", "MFBASES",
+                      "TEXBIB", "TEXCONFIG", "TEXFORMATS",
+                      "TEXINDEXSTYLE", "TEXFONTMAPS", "MFINPUTS",
+                      "TEXFONTS", "T1FONTS", "TTFONTS",
+                      "VFFONTS", "XDVIFONTS", "GLYPHFONTS",
+                      "ENCFONTS", "TEXPSHEADERS");
+
+# By default don't traverse into these directories
+my @default_dir_ignores = (".svn", ".snapshot");
 
 # What is our sml-cm called?  Should make this a command-line option
 my $sml_cm = "sml-cm";
@@ -89,6 +80,10 @@ my %directories = ();
 my $cm_exists = undef;
 # What was the CM_PATH returned by sml-cm (if it exists)
 my @cm_path = ();
+
+# Boolean constants
+my $false_const = (0 == 1);
+my $true_const = (1 == 1);
 
 ##############################################################################
 # Obscure SML Compilation manager stuff
@@ -143,14 +138,43 @@ sub obtain_cm_path () {
 
 ##############################################################################
 
+## A function to handle extending the list of TEXINPUTS-like variables
+
 sub extend_texinputs_like ($) {
   my $variable = shift;
-  if(!(grep($variable, @TEXINPUTS_like))) {
-    push @TEXINPUTS_like, $variable;
+  foreach my $name (@TEXINPUTS_like) {
+    if($variable eq $name) {
+      return;
+    }
+  }
+ 
+  push @TEXINPUTS_like, $variable;
+}
+
+#####################################################################
+
+sub option_error ($$$) {
+  my ($option, $name, $other) = @_;
+  if($option) {
+    die "--$name has no meaning with --$other";
+  }
+}
+
+#####################################################################
+
+# Validate that somethins is actually a directory.
+
+sub validate_directory ($$) {
+  my ($dir, $subname) = @_;
+  if(! (-d $dir)) {
+    die "$subname: directory argument \"$dir\" is not a directory!";
   }
 }
 
 ##############################################################################
+
+## Given a reference to a list of regular expressions to ignore, match against
+## the given directory.
 
 sub should_ignore_dir ($$) {
   my $dir = shift;
@@ -841,12 +865,13 @@ directory.
                           optimized for Z-Shell
                       
         --bg              run in the background. Only one instance of 
-                          env-tool may run at a time if --lock is used
+                          env-tool may run at a time if --lock is used.
+                          Can't be used with --condbg.
                       
         --condbg          run in the background if 
                           outputdir/.env-tool.{csh,sh,zsh} already exist. 
                           Only one instance of env-tool may run at a time 
-                          if --lock is used
+                          if --lock is used.  Can't be used with --bg
                       
         --safe            produce shell scripts that attempt to not 
                           disturb the user's existing configuration
@@ -1232,117 +1257,108 @@ sub gen_cond_var ($$$$$$) {
 
 # Scan the specified directory and its children for configuration files, and
 # process them
-sub collect_environment ($$$$) {
-    my $cache = shift;
-    my $dir = shift;
-    my $ignorecache = shift;
-    my $ignores = shift;
+sub collect_environment ($$$) {
+    my ($dir, $ignorecache, $ignores) = @_;
 
-    # Test that it is actually a directory
-    if(!(-d $dir)) {
-      die "collect_environment: argument \"$dir\" is not a directory!";
-    }
+    validate_directory $dir, "collect_environment";
 
-    &File::Find::find(sub
-                      {   my $file = $_;
+    &File::Find::find(
+      sub { my $file = $_;
+            if(-d $file) { 
+              # Is this a directory we should ignore?
+              foreach my $f (@default_dir_ignores) {
+                if ($f eq $file) {
+                  verbosemsg("Ignoring directory $File::Find::name");
+                  $File::Find::prune = 1;
+                  return;
+                }
+              }
+            
+              # If we can't change to this directory, prune it
+              if (!(-x $file)) {
+                verbosemsg("Ignoring the directory $File::Find::name because change to it");
+                $File::Find::prune = 1;
+                return; 
+              }
+            }
 
-                          # Does this file match our ignores list?
-                          if(&should_ignore_dir($file, $ignores)) {
-                              verbosemsg("Ignoring .env-config files in: $File::Find::name");
-                              $File::Find::prune = 1;
-                              return;
-                          }    
+            # Does this file match our ignores list?
+            if(should_ignore_dir $file, $ignores) {
+              verbosemsg("Ignoring .env-config files in: $File::Find::name");
+              $File::Find::prune = 1;
+              return;
+            }    
                           
-                          # If we can't change to this directory, prune it
-                          if ((-d $file) && !(-x $file)) {
-                            verbosemsg("Ignoring the directory $File::Find::name because change to it");
-                            $File::Find::prune = 1;
-                            return; 
-                          }
                          
-                          # Check for an ignore file and prune to prevent recursing
-                          if (-f "$file/.env-config-ignore") {
-                              verbosemsg("Ignoring .env-config files in: $File::Find::name");
-                              $File::Find::prune = 1;
-                              return; 
-                          }
+            # Check for an ignore file and prune to prevent recursing
+            if (-f "$file/.env-config-ignore") {
+              verbosemsg("Ignoring .env-config files in: $File::Find::name");
+              $File::Find::prune = 1;
+              return; 
+            }
                           
-                          # Are we ignoring caches? 
-                          if(!$ignorecache) {
-                          # Check for a cache file.  
-                          # If we can read it, process it and prune the directory.
-                            my $cachefile = "$file/.env-cache.xml";
-                            # Can we read it? And is a plain old file?
-                            if ((-f $cachefile) && (-r $cachefile)) {
-                              verbosemsg("Reading .env-cache.xml file in: $File::Find::name");
-                              process_file getcwd, $cachefile, $ignores;
-                              $File::Find::prune = 1;
-                              return;
-                            }
-                          }  
+            # Are we ignoring caches? 
+            if(!$ignorecache) {
+              # Check for a cache file.  
+              # If we can read it, process it and prune the directory.
+              my $cachefile = "$file/.env-cache.xml";
+              # Can we read it? And is a plain old file?
+              if ((-f $cachefile) && (-r $cachefile)) {
+                verbosemsg("Reading .env-cache.xml file in: $File::Find::name");
+                process_file getcwd, $cachefile, $ignores;
+                $File::Find::prune = 1;
+                return;
+              }
+            }  
                           
-                          # Are we looking at a configuration file?
-                          if (/^.env-config.xml$/) {
-                            # Can we read it? And is a plain old file?
-                            if ((-f $_) && (-r $_)) {
-                              verbosemsg("Processing $File::Find::dir/$_");
-                              process_file getcwd, $_, $ignores;
-                            }                            
-                          }
-                          },
-                      $dir);
+            # Are we looking at a configuration file?
+            if (/^.env-config.xml$/) {
+              # Can we read it? And is a plain old file?
+              if ((-f $_) && (-r $_)) {
+                verbosemsg("Processing $File::Find::dir/$_");
+                process_file getcwd, $_, $ignores;
+              }                            
+          }
+         }, $dir);
 }
 
 # Write out a script based upon the environment information we have collected
-sub update_script ($$$$$$$) {
-    my $format = shift;
-    my $output = shift;
-    my $safe = shift;
-    my $debug = shift;
-    my $testing = shift;
-    my $envtableref = shift;
-    my $keypairref = shift;
+sub gen_script ($$$$$) {
+    my ($format, $safe, $debug, $envtableref, $keypairref) = @_;
 
-    if(!$testing) {
-      open (OUTPUT, ">$output");
-      print OUTPUT gen_prologue($format);
-    }
+    my $result = gen_prologue $format;
 
     for(keys %{$envtableref}) {
-        #print STDERR "_: [$_]\n";
-        if(!(exists $default_environment{$_})) {
-            $default_environment{$_} = [];
-        }
+      #print STDERR "_: [$_]\n";
+      if(!(exists $default_environment{$_})) {
+        $default_environment{$_} = [];
+      }
 
-        #print STDERR "environment{_}: [@{$environment{$_}}]\n";
-        my $default = join(":", (@{$default_environment{$_}}, @{${$envtableref}{$_}}));
-        #print STDERR "default: [$default]\n";
+      #print STDERR "environment{_}: [@{$environment{$_}}]\n";
+      my $default = join(":", (@{$default_environment{$_}}, @{${$envtableref}{$_}}));
+      #print STDERR "default: [$default]\n";
 
-        my $result = gen_cond_var($format, $_, ${$envtableref}{$_}, $default, $safe, $debug);
-        if(!$testing) {
-          print OUTPUT $result, "\n";
-        }
+      $result .= gen_cond_var($format, $_, ${$envtableref}{$_}, $default, $safe, $debug);
+      $result .= "\n";      
     }
     
     # Create aliases
     if(!$safe) { 
       foreach my $pair (@{$keypairref}) {
         my ($name, $value) = @{$pair};
-        my $result = gen_cond_alias($format, $name, $value, $debug);
-        if (!$testing) {
-          print OUTPUT $result;
-        }
+        $result .= gen_cond_alias($format, $name, $value, $debug);
       }
     }
 
-    if(!$testing) {
-      print OUTPUT gen_epilogue($format);
-      close (OUTPUT);
-    }
+    $result .= gen_epilogue($format);
 }
 
 #####################################################################
 
+## Bits to do with verbosity
+## Maybe in some future version have levels of verbosity.
+
+# Use a global reference so we don't need to pass this around 
 my $verboseref = undef;
 
 sub verbosemsg ($) {
@@ -1354,6 +1370,9 @@ sub verbosemsg ($) {
 
 #####################################################################
 
+## Bits to do with the locking mechanism.
+
+# Use a global reference so we don't need to pass this around
 my $lockfileref = undef;
 
 sub detect_lock () {
@@ -1392,88 +1411,135 @@ sub remove_lock () {
 
 #####################################################################
 
-# Does most of the actual work
-sub run_env_tool (\@\@$$$$$$$$) {
-  my $dirs_tmp = shift;
-  my @dirs = @$dirs_tmp;
-  my $formats_tmp = shift;
-  my @formats = @$formats_tmp;
-  my $outputdir = shift;
-  if(!(-d $outputdir)) {
-    die "run_env_tool: directory argument \"$outputdir\" is not a directory!";
-  } 
-  my $safe = shift;
-  my $cache = shift;
-  my $debug = shift;
-  my $test = shift;
-  my $lock = shift;
-  my $ignorecache = shift;
-  my $ignores = shift;
-
+sub cache_toplevel (\@$$$$) {
+  my ($dirsref, $outputdir, $test, $lock, $ignores) = @_;
+  my @dirs = @$dirsref;
+  
+  validate_directory $outputdir, "cache_toplevel";
+  foreach my $dir (@dirs) { validate_directory $dir, "cache_toplevel"; }
+  
   # Create a lock file so that we don't wind up with multiple instances
   # scanning when several terminals are opened in a short span of time
   # Set up some signal handlers
-
+  
   if ($lock) {
     if (detect_lock()) {
       print "Another env-tool process is already running.\n";
       exit 1;
     } else {
+      config_signals();
       acquire_lock();
     }
   }  
 
-  # Do this here because otherwise Perl segfaults.  I don't know why.
-  $cm_exists = &sml_cm_exists();
-  @cm_path = ();
-
-  # *** Should only run this if an extension to CM_PATH has been
-  # requested.
-  if($cm_exists) {
-    @cm_path = &obtain_cm_path();
-  }
-
   # Scan and collect environment information
-  foreach my $dir (@dirs) { collect_environment $cache, $dir, $ignorecache, $ignores; }
+  foreach my $dir (@dirs) { collect_environment $dir, $true_const, $ignores; }
 
-  # Initialize the default environment
-  init_default_environment();
-
-  if($cache) {
-      # Create a reasonably race-free temporary filename
-      my $tmp_file = "$outputdir/.env-cache.".(unpack("H*", pack("Nn", rand, time, $$)));
-      # Specifiy our destination file
-      my $dest_file = "$outputdir/.env-cache.xml";
+  # Search and write to our temporary file
+  my $cachedata = gen_cache();
+ 
+  if(!$test) {
+    # Create a reasonably race-free temporary filename
+    my $tmp_file = "$outputdir/.env-cache.".(unpack("H*", pack("Nn", rand, time, $$)));
+    # Specifiy our destination file
+    my $dest_file = "$outputdir/.env-cache.xml";
     
-      # Search and write to our temporary file
-      open(CACHE, ">$tmp_file");
-      print CACHE gen_cache();
-      close(CACHE);
+    open(CACHE, ">$tmp_file");
+    print CACHE $cachedata;
+    close(CACHE);
       
-      # Atomically update, on systems that have rename(2)
-      rename($tmp_file, $dest_file);
-  } else {
-    # For each type of script, atomically update it.
-    foreach my $format (@formats) {
-      # Create a reasonably race-free temporary filename
-      my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
-      # Specifiy our destination file
-      my $dest_file = "$outputdir/.env-tool.".$format;
-    
-      # Search and write to our temporary file
-      my %envtable = build_environment_variable_defs();
-      my @keypairs = build_alias_keypairs();
-      update_script $format, $tmp_file, $safe, $debug, $test, \%envtable, \@keypairs;
-    
-      # Atomically update, on systems that have rename(2)
-      rename($tmp_file, $dest_file);
-    }
+    # Atomically update, on systems that have rename(2)
+    rename($tmp_file, $dest_file);
   }
   
   if($lock) {
     # Eliminate the lock file
     remove_lock();
   }  
+}
+
+# Does most of the actual work
+sub script_toplevel (\@\@$$$$$$$$$) {
+  my ($dirsref, $formatsref, $bg, $condbg, $outputdir, $safe, $debug, $test, $lock, $ignorecache, $ignores) = @_;
+  
+  my @dirs = @$dirsref;
+  my @formats = @$formatsref;
+  
+  validate_directory $outputdir, "script_toplevel";
+  foreach my $dir (@dirs) { validate_directory $dir, "script_toplevel"; }
+
+  # Decide whether or not we should run in the background
+  my $pid = undef;
+  if($bg) {
+    $pid = fork;
+  } elsif ($condbg) { 
+    # Check to see whether scripts exist
+    if((-e "$outputdir/.env-tool.sh" && (grep ("sh", @formats))) || 
+       (-e "$outputdir/.env-tool.csh" && (grep ("csh", @formats))) || 
+       (-e "$outputdir/.env-tool.zsh" && (grep ("zsh", @formats)))) {
+      $pid = fork;
+    } else {
+      $pid = 0;
+    }
+  } else {
+    $pid = 0;
+  }
+
+  # Are we the process that is going to do the work?
+  if($pid == 0) {
+    # Create a lock file so that we don't wind up with multiple instances
+    # scanning when several terminals are opened in a short span of time
+    # Set up some signal handlers
+    if ($lock) {
+      if (detect_lock()) {
+        print "Another env-tool process is already running.\n";
+        exit 1;
+      } else {
+        config_signals();
+        acquire_lock();
+      }
+    }  
+
+      # Do this here because otherwise Perl segfaults.  I don't know why.
+      $cm_exists = &sml_cm_exists();
+      @cm_path = ();
+
+      # *** Should only run this if an extension to CM_PATH has been
+      # requested.
+      if($cm_exists) {
+        @cm_path = &obtain_cm_path();
+      }
+
+      # Scan and collect environment information
+      foreach my $dir (@dirs) { collect_environment $dir, $ignorecache, $ignores; }
+
+      # Initialize the default environment
+      init_default_environment();
+
+      # For each type of script, atomically update it.
+      foreach my $format (@formats) {
+    
+        # Search and write to our temporary file
+        my %envtable = build_environment_variable_defs();
+        my @keypairs = build_alias_keypairs();
+        my $script = gen_script $format, $safe, $debug, \%envtable, \@keypairs;
+    
+        if (!$test) {
+          # Create a reasonably race-free temporary filename
+          my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
+          # Specifiy our destination file
+          my $dest_file = "$outputdir/.env-tool.".$format;
+
+          # Atomically update, on systems that have rename(2)
+          rename($tmp_file, $dest_file);
+        }   
+      }
+
+      if($lock) {
+        # Eliminate the lock file
+        remove_lock();
+      }  
+  }    
 }
 
 #####################################################################
@@ -1535,6 +1601,7 @@ if($cmdoptions{h} || $cmdoptions{help}) {
 if($cmdoptions{cache}) {
   $cmdoptions{ignorecache} = $cmdoptions{cache}
 }
+
 my $outputdir = undef;
 if($cmdoptions{outputdir}) {
   $outputdir = $cmdoptions{outputdir};
@@ -1542,76 +1609,59 @@ if($cmdoptions{outputdir}) {
   verbosemsg("No output directory specified, using $ENV{HOME}");
   $outputdir = $ENV{HOME};
 }
-if(!(-d $outputdir)) {
-  die "Output directory \"$outputdir\" is not a directory!";
-} 
+validate_directory $outputdir, "env-tool";
 
 $lockfileref = \"$outputdir/.env-tool.lock";
 
-# Check to see which format files we should generate
-my @formats = ();
-if($cmdoptions{csh}) {
-  push @formats, "csh";
-}
-if($cmdoptions{sh}) {
-  push @formats, "sh";
-}
-if($cmdoptions{zsh}) {
-  push @formats, "zsh";
-}
-# None were selected? Do all
-if((scalar @formats) == 0) {
-  @formats = ("sh", "csh", "zsh");
-}
-
-# Can't use --bg and --condbg simultaneously
-if($cmdoptions{bg} && $cmdoptions{condbg}) {
-  &print_usage();
-}
-
-
-# Decide whether or not we should run in the background
-my $pid = undef;
-if($cmdoptions{bg}) {
-  $pid = fork;
-} elsif ($cmdoptions{condbg}) {
-  
-  # Check to see whether scripts exist
-  if((-e "$outputdir/.env-tool.sh" && (grep ("sh", @formats))) || 
-     (-e "$outputdir/.env-tool.csh" && (grep ("csh", @formats))) || 
-     (-e "$outputdir/.env-tool.zsh" && (grep ("zsh", @formats)))) {
-    $pid = fork;
-  } else {
-    $pid = 0;
-  }
-} else {
-  $pid = 0;
-}
 
 # The remaining options should be directories
 my @dirs = @ARGV;
 
 # If there are no directories specified add the current one.
 if((scalar @dirs) == 0) {
-push @dirs, getcwd;
+  push @dirs, getcwd;
 }
 
-# Are we the process that is going to do the work?
-if($pid == 0) {
-  if($cmdoptions{lock}) {
-    config_signals();
+foreach my $dir (@dirs) { validate_directory $dir, "env-tool"; }
+
+if($cmdoptions{cache}) {
+  option_error $cmdoptions{bg}, "bg", "cache";
+  option_error $cmdoptions{condbg}, "condbg", "cache";
+  option_error $cmdoptions{safe}, "safe", "cache";
+  option_error $cmdoptions{debug}, "debug", "cache";
+  option_error $cmdoptions{sh}, "sh", "cache";
+  option_error $cmdoptions{csh}, "csh", "cache";
+  option_error $cmdoptions{zsh}, "zsh", "cache";
+
+  cache_toplevel @dirs, $outputdir, $cmdoptions{test}, $cmdoptions{lock}, 
+                 \@{$cmdoptions{ignores}};
+} else {
+
+  # Can't use --bg and --condbg simultaneously
+  if($cmdoptions{bg} && $cmdoptions{condbg}) {
+    &print_usage();
   }
 
-  run_env_tool(@dirs, 
-               @formats,
-               $outputdir,
-               $cmdoptions{safe}, 
-               $cmdoptions{cache}, 
-               $cmdoptions{debug}, 
-               $cmdoptions{test}, 
-               $cmdoptions{lock},
-               $cmdoptions{ignorecache},
-               \@{$cmdoptions{ignores}});
+  # Check to see which format files we should generate
+  my @formats = ();
+  if($cmdoptions{csh}) {
+    push @formats, "csh";
+  }
+  if($cmdoptions{sh}) {
+    push @formats, "sh";
+  }
+  if($cmdoptions{zsh}) {
+    push @formats, "zsh";
+  }
+  # None were selected? Do all
+  if((scalar @formats) == 0) {
+    @formats = ("sh", "csh", "zsh");
+  }
+  
+  script_toplevel @dirs, @formats, $cmdoptions{bg}, $cmdoptions{condbg}, $outputdir,
+                  $cmdoptions{safe}, $cmdoptions{debug}, $cmdoptions{test}, $cmdoptions{lock},
+                  $cmdoptions{ignorecache}, \@{$cmdoptions{ignores}};
+  
 }
 
 # Exit successfully 
@@ -1807,7 +1857,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 24 2005-08-07 00:23:55Z geoffw $
+$Id: env-tool 26 2005-08-07 19:09:08Z geoffw $
 
 =head1 AUTHOR
 

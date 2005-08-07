@@ -6,8 +6,7 @@ test: :effects: errors1.log
 	diff ref-errors4 errors4.log
 	diff ref-errors5 errors5.log
 	diff ref-errors6 errors6.log
-# Can't perform this test with XML::Parser::Lite
-#	diff ref-errors7 errors7.log
+	diff ref-errors7 errors7.log
 
 clean:
 	$(RM) *.log .env-tool.*

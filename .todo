@@ -1,11 +1,17 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 25 2005-08-07 01:29:25Z geoffw $
+        env-tool to-do list $Id: .todo 26 2005-08-07 19:09:08Z geoffw $
     </title>
     <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
         <comment>
             Initial caching support implemented.  Needs more testing however.
+        </comment>
+    </note>
+    <note priority="medium" time="1122925473" done="1123441172">
+        Write schemas for validating .env-config.xml files.
+        <comment>
+            Done.
         </comment>
     </note>
     <note priority="medium" time="1123261919" done="1123374179">
@@ -14,23 +20,26 @@
             Done
         </comment>
     </note>
+    <note priority="medium" time="1123373885" done="1123441163">
+        Fix test option to really work.
+        <comment>
+            Done.
+        </comment>
+    </note>
     <note priority="medium" time="1122925391">
         Write more documentation.
     </note>
     <note priority="medium" time="1122925443">
         Add unit tests?
     </note>
-    <note priority="medium" time="1122925473">
-        Write schemas for validating .env-config.xml files.
-    </note>
-    <note priority="medium" time="1123373885">
-        Fix test option to really work.
-    </note>
     <note priority="medium" time="1123374198">
         Fix bg and conbg to only affect shell generation not cache.
     </note>
-    <note priority="medium" time="1123375819">
+    <note priority="medium" time="1123375819" done="1123441694">
         Add ignores for things like .snapshot .svn dirs by default.
+        <comment>
+            Done.
+        </comment>
     </note>
     <note priority="medium" time="1123378107">
         Optimized bash output.
