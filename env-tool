@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 23 2005-08-05 17:25:12Z geoffw $
+# env-tool $Id: env-tool 24 2005-08-07 00:23:55Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -800,20 +800,37 @@ sub process_config ($$$) {
 # Print the usage information
 sub print_usage () {
   print <<END;
-Usage: env-tool [-h|--help] [--outputdir dir] 
-                [--sh] [--csh] [--zsh] [--ignores re]
-                [--lock] [--bg|--condbg] [--safe] [--debug] 
-                [--test] [directories ...]
+Usage: env-tool [-h|--help] [--verbose] [--outputdir dir] 
+                [--ignores re] [--lock] [--test] 
+                [--sh] [--csh] [--zsh] [--ignorecache]
+                [--bg|--condbg] [--safe] [--debug] 
+                [--cache] [directories ...]
 
 Scan the specified directories and their children for environment
-configuation files, and atomically create ~/.env-tool.sh, ~/.env-tool.csh,
-and ~/.env-tool.zsh files as specified.  If no directories are specified
-scan the current directory.
+configuation files, and atomically create outputdir/.env-tool.{csh,sh,zsh} 
+files as specified.  If no directories are specified scan the current 
+directory.
+
+   Universal options:
 
     -h, --help            print this message
-    
+        
+        --verbose         print detailed information about the activity of env-tool
+                          to stderr
+        
         --outputdir dir   set the output directory.  default is ~/
-    
+        
+        --test            run but do not write output to a file 
+        
+        --ignores re      prune the specified regular expression from
+                          the search.  May be used any number of times.
+        
+        --lock            force locking so that only one instance can
+                          operate at a time. creates a lockfile 
+                          outputdir/.env-tool.lock
+         
+   Shell script generation options:
+   
         --sh              only create outputdir/.env-tool.sh, a script for 
                           Bourne descended shells
                       
@@ -822,36 +839,27 @@ scan the current directory.
                       
         --zsh             only create outputdir/.env-tool.zsh, a script for 
                           optimized for Z-Shell
-        
-        --ignores re      prune the specified regular expression from
-                          the search.  May be used any number of times.
-
-        --lock            force locking so that only one instance can
-                          operate at a time. creates a lockfile 
-                          outputdir/.env-tool.lock
                       
         --bg              run in the background. Only one instance of 
                           env-tool may run at a time if --lock is used
                       
-        --condbg          run in the background if outputdir/.env-tool.sh,
-                          outputdir/.env-tool.csh, or outputdir/.env-tool.zsh
-                          already exist. Only one  instance of env-tool may 
-                          run at a time if --lock is used
+        --condbg          run in the background if 
+                          outputdir/.env-tool.{csh,sh,zsh} already exist. 
+                          Only one instance of env-tool may run at a time 
+                          if --lock is used
                       
         --safe            produce shell scripts that attempt to not 
                           disturb the user's existing configuration
                       
         --debug           output shell code that describes what 
                           it is doing
-                      
-        --test            run but do not write output to a file 
         
-        --verbose         print detailed information about the activity of env-tool
-                          to stderr
-        
+        --ignorecache     ignore env-tool cache files
+   
+   Cache generation options:
+  
         --cache           instead of producing a shell script, output a cache
                           file, outpdir/.env-cache.xml
-        
 
 Try `perldoc env-tool' for more information.
 END
@@ -1224,9 +1232,10 @@ sub gen_cond_var ($$$$$$) {
 
 # Scan the specified directory and its children for configuration files, and
 # process them
-sub collect_environment ($$$) {
+sub collect_environment ($$$$) {
     my $cache = shift;
     my $dir = shift;
+    my $ignorecache = shift;
     my $ignores = shift;
 
     # Test that it is actually a directory
@@ -1258,8 +1267,8 @@ sub collect_environment ($$$) {
                               return; 
                           }
                           
-                          # Are we building a cache file?
-                          if(!$cache) {
+                          # Are we ignoring caches? 
+                          if(!$ignorecache) {
                           # Check for a cache file.  
                           # If we can read it, process it and prune the directory.
                             my $cachefile = "$file/.env-cache.xml";
@@ -1384,7 +1393,7 @@ sub remove_lock () {
 #####################################################################
 
 # Does most of the actual work
-sub run_env_tool (\@\@$$$$$$$) {
+sub run_env_tool (\@\@$$$$$$$$) {
   my $dirs_tmp = shift;
   my @dirs = @$dirs_tmp;
   my $formats_tmp = shift;
@@ -1398,6 +1407,7 @@ sub run_env_tool (\@\@$$$$$$$) {
   my $debug = shift;
   my $test = shift;
   my $lock = shift;
+  my $ignorecache = shift;
   my $ignores = shift;
 
   # Create a lock file so that we don't wind up with multiple instances
@@ -1424,7 +1434,7 @@ sub run_env_tool (\@\@$$$$$$$) {
   }
 
   # Scan and collect environment information
-  foreach my $dir (@dirs) { collect_environment $cache, $dir, $ignores; }
+  foreach my $dir (@dirs) { collect_environment $cache, $dir, $ignorecache, $ignores; }
 
   # Initialize the default environment
   init_default_environment();
@@ -1512,7 +1522,7 @@ sub config_signals () {
 my %cmdoptions = ();
 GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", "cache", 
                          "verbose", "safe", "debug", "test", "lock", "ignores=s@",
-                         "outputdir=s");
+                         "ignorecache", "outputdir=s");
 
 $verboseref = \$cmdoptions{verbose};
 
@@ -1521,6 +1531,10 @@ if($cmdoptions{h} || $cmdoptions{help}) {
   &print_usage();
 }
 
+# If we are building a cachefile, definitely ignore caches.
+if($cmdoptions{cache}) {
+  $cmdoptions{ignorecache} = $cmdoptions{cache}
+}
 my $outputdir = undef;
 if($cmdoptions{outputdir}) {
   $outputdir = $cmdoptions{outputdir};
@@ -1596,6 +1610,7 @@ if($pid == 0) {
                $cmdoptions{debug}, 
                $cmdoptions{test}, 
                $cmdoptions{lock},
+               $cmdoptions{ignorecache},
                \@{$cmdoptions{ignores}});
 }
 
@@ -1792,7 +1807,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 23 2005-08-05 17:25:12Z geoffw $
+$Id: env-tool 24 2005-08-07 00:23:55Z geoffw $
 
 =head1 AUTHOR
 

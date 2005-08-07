@@ -1,11 +1,17 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 23 2005-08-05 17:25:12Z geoffw $
+        env-tool to-do list $Id: .todo 24 2005-08-07 00:23:55Z geoffw $
     </title>
     <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
         <comment>
             Initial caching support implemented.  Needs more testing however.
+        </comment>
+    </note>
+    <note priority="medium" time="1123261919" done="1123374179">
+        Add --ignorecaches option.
+        <comment>
+            Done
         </comment>
     </note>
     <note priority="medium" time="1122925391">
@@ -17,7 +23,10 @@
     <note priority="medium" time="1122925473">
         Write schemas for validating .env-config.xml files.
     </note>
-    <note priority="medium" time="1123261919">
-        Add --ignorecaches option.
+    <note priority="medium" time="1123373885">
+        Fix test option to really work.
+    </note>
+    <note priority="medium" time="1123374198">
+        Fix bg and conbg to only affect shell generation not cache.
     </note>
 </todo>
