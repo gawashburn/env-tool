@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 29 2005-08-07 19:45:58Z geoffw $
+# env-tool $Id: env-tool 30 2005-08-07 19:46:43Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -1153,7 +1153,7 @@ sub gen_cond_var_bash ($$$$$) {
   if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
   if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
   $result .="    temp=".(join(' ', map { "\"$_\"" } @$additions_array)).";\n";
-  $result .="    extend_env_list $variable (\$temp) $safe_string $debug_string;\n";
+  $result .="    extend_env_list $variable \$temp $safe_string $debug_string;\n";
   $result .= ";;\nesac\n";
   
   return $result;
@@ -1969,7 +1969,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 29 2005-08-07 19:45:58Z geoffw $
+$Id: env-tool 30 2005-08-07 19:46:43Z geoffw $
 
 =head1 AUTHOR
 
