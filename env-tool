@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 26 2005-08-07 19:09:08Z geoffw $
+# env-tool $Id: env-tool 27 2005-08-07 19:42:45Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -826,8 +826,8 @@ sub print_usage () {
   print <<END;
 Usage: env-tool [-h|--help] [--verbose] [--outputdir dir] 
                 [--ignores re] [--lock] [--test] 
-                [--sh] [--csh] [--zsh] [--ignorecache]
-                [--bg|--condbg] [--safe] [--debug] 
+                [--sh] [--csh] [--zsh] [--bash] 
+                [--ignorecache] [--bg|--condbg] [--safe] [--debug] 
                 [--cache] [directories ...]
 
 Scan the specified directories and their children for environment
@@ -863,6 +863,9 @@ directory.
                       
         --zsh             only create outputdir/.env-tool.zsh, a script for 
                           optimized for Z-Shell
+        
+        --bash            only create outputdir/.env-tool.zsh, a script for 
+                          optimized for the Bourne Again Shell
                       
         --bg              run in the background. Only one instance of 
                           env-tool may run at a time if --lock is used.
@@ -1072,6 +1075,89 @@ sub gen_cond_var_csh ($$$$$) {
   return $result;
 }
 
+##############################################################################
+### bash shell ######
+
+sub gen_prologue_bash () {
+
+my $result=<<END;
+\# Helper function
+extend_env() {
+case "\${!1}" in
+  "\$2") ;;
+  *:"\$2") ;;
+  "\$2":*) ;;
+  *:"\$2":*) ;;
+  *) if \$4; then
+       echo "env-tool: extending \$1 with \$2"
+     fi 
+     if \$3; then
+       export \$1="\${!1}:\$2"
+     else 
+       export \$1="\$2:\${!1}"
+     fi;;
+esac
+}
+extend_env_list () { 
+  for ext in \$2
+  do
+    extend_env \$1 \$ext \$3 \$4
+  done
+}
+
+
+END
+
+  return $result;
+}
+
+sub gen_epilogue_bash () {
+  return "\nunset -f extend_env\nunset -f extend_env_list\n";
+}
+
+sub gen_cond_alias_bash ($$$) {
+  # Don't need to validate any of the inputs because gen_cond_alias has 
+  # already done it for us.
+  my $name = shift @_;
+  my $value = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "alias $name=$value\n";
+  if($debug) {
+    $result .="echo \"env-tool: aliasing $name with $value\"\n";
+  }
+
+  return $result;
+}
+
+sub gen_cond_var_bash ($$$$$) {
+  # Don't need to validate any of the inputs because gen_cond_var has 
+  # already done it for us.
+  my $variable = shift @_;
+  my $additions_array = shift @_;
+  my $default = shift @_;
+  my $safe = shift @_;
+  my $debug = shift @_;
+
+  my $result = undef;
+  $result .= "case \"x\${$variable:-y}\" in\n  xy)";
+  $result .= " export $variable='$default'";
+  if($debug) {
+    $result .="\n    echo \"env-tool: setting $variable with $default\"";
+  }
+  $result .=";;\n  *)\n";
+    
+  my $safe_string = undef;
+  my $debug_string = undef;
+  if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
+  if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
+  $result .="    extend_env_list $variable (" . (join(' ', map { "\"$_\"" } @$additions_array)) . ") $safe_string $debug_string;\n";
+  $result .= ";;\nesac\n";
+  
+  return $result;
+}
+
 
 ##############################################################################
 ### Z shell ######
@@ -1096,6 +1182,13 @@ case "\${(P)1}" in
      fi;;
 esac
 }
+extend_env_list () { 
+  for ext in \$2
+  do
+    extend_env \$1 \$ext \$3 \$4
+  done
+}
+
 
 END
 
@@ -1103,7 +1196,7 @@ END
 }
 
 sub gen_epilogue_zsh () {
-  return "\nunfunction extend_env\n";
+  return "\nunfunction extend_env\nunfunction extend_env_list\n";
 }
 
 sub gen_cond_alias_zsh ($$$) {
@@ -1139,13 +1232,11 @@ sub gen_cond_var_zsh ($$$$$) {
   }
   $result .=";;\n  *)\n";
     
-  for(@$additions_array) {
-   my $safe_string = undef;
-   my $debug_string = undef;
-   if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
-   if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
-    $result .="    extend_env $variable \"$_\" $safe_string $debug_string;\n";
-  }
+  my $safe_string = undef;
+  my $debug_string = undef;
+  if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
+  if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
+  $result .="    extend_env_list $variable (" . (join(' ', map { "\"$_\"" } @$additions_array)) . ") $safe_string $debug_string;\n";
   $result .= ";;\nesac\n";
   
   return $result;
@@ -1166,6 +1257,8 @@ sub gen_prologue ($) {
     $result .= gen_prologue_csh();
   } elsif($format eq "zsh") {
     $result .= gen_prologue_zsh();
+  } elsif($format eq "bash") {
+    $result .= gen_prologue_bash();
   } else {
     die "gen_prologue: Invalid format $format.";
   }
@@ -1185,6 +1278,8 @@ sub gen_epilogue ($) {
     $result = gen_epilogue_csh();
   } elsif($format eq "zsh") {
     $result = gen_epilogue_zsh();
+  } elsif($format eq "bash") {
+    $result = gen_epilogue_bash();
   } else {
     die "gen_epilogue: Invalid format $format.";
   }
@@ -1217,6 +1312,8 @@ sub gen_cond_alias ($$$$) {
     $result = gen_cond_alias_csh($name, $value, $debug);
   } elsif($format eq "zsh") {
     $result = gen_cond_alias_zsh($name, $value, $debug);
+  } elsif($format eq "bash") {
+    $result = gen_cond_alias_bash($name, $value, $debug);
   } else {
     die "gen_cond_alias: Invalid format $format for alias $name=$value.";
   }
@@ -1245,6 +1342,8 @@ sub gen_cond_var ($$$$$$) {
     $result = gen_cond_var_csh($variable, $additions_array, $default, $safe, $debug);
   } elsif ($format eq "zsh") {
     $result = gen_cond_var_zsh($variable, $additions_array, $default, $safe, $debug);
+  } elsif ($format eq "bash") {
+    $result = gen_cond_var_bash($variable, $additions_array, $default, $safe, $debug);
   } else {
      die "gen_cond_var: Invalid format $format for variable $variable";
   }
@@ -1326,6 +1425,8 @@ sub collect_environment ($$$) {
 sub gen_script ($$$$$) {
     my ($format, $safe, $debug, $envtableref, $keypairref) = @_;
 
+    verbosemsg("Generating a script for shell type $format"); 
+
     my $result = gen_prologue $format;
 
     for(keys %{$envtableref}) {
@@ -1351,6 +1452,7 @@ sub gen_script ($$$$$) {
     }
 
     $result .= gen_epilogue($format);
+    return $result;
 }
 
 #####################################################################
@@ -1475,6 +1577,7 @@ sub script_toplevel (\@\@$$$$$$$$$) {
   } elsif ($condbg) { 
     # Check to see whether scripts exist
     if((-e "$outputdir/.env-tool.sh" && (grep ("sh", @formats))) || 
+       (-e "$outputdir/.env-tool.bash" && (grep ("bash", @formats))) || 
        (-e "$outputdir/.env-tool.csh" && (grep ("csh", @formats))) || 
        (-e "$outputdir/.env-tool.zsh" && (grep ("zsh", @formats)))) {
       $pid = fork;
@@ -1529,6 +1632,10 @@ sub script_toplevel (\@\@$$$$$$$$$) {
           my $tmp_file = "$outputdir/.env-tool.".(unpack("H*", pack("Nn", rand, time, $$))).$format;
           # Specifiy our destination file
           my $dest_file = "$outputdir/.env-tool.".$format;
+    
+          open(SCRIPT, ">$tmp_file");
+          print SCRIPT $script;
+          close(SCRIPT);
 
           # Atomically update, on systems that have rename(2)
           rename($tmp_file, $dest_file);
@@ -1586,7 +1693,7 @@ sub config_signals () {
    
 # Did the user request help?
 my %cmdoptions = ();
-GetOptions(\%cmdoptions, "h", "help", "csh", "sh", "zsh", "bg", "condbg", "cache", 
+GetOptions(\%cmdoptions, "h", "help", "bash", "csh", "sh", "zsh", "bg", "condbg", "cache", 
                          "verbose", "safe", "debug", "test", "lock", "ignores=s@",
                          "ignorecache", "outputdir=s");
 
@@ -1630,6 +1737,7 @@ if($cmdoptions{cache}) {
   option_error $cmdoptions{safe}, "safe", "cache";
   option_error $cmdoptions{debug}, "debug", "cache";
   option_error $cmdoptions{sh}, "sh", "cache";
+  option_error $cmdoptions{bash}, "bash", "cache";
   option_error $cmdoptions{csh}, "csh", "cache";
   option_error $cmdoptions{zsh}, "zsh", "cache";
 
@@ -1647,6 +1755,9 @@ if($cmdoptions{cache}) {
   if($cmdoptions{csh}) {
     push @formats, "csh";
   }
+  if($cmdoptions{bash}) {
+    push @formats, "bash";
+  }
   if($cmdoptions{sh}) {
     push @formats, "sh";
   }
@@ -1655,7 +1766,7 @@ if($cmdoptions{cache}) {
   }
   # None were selected? Do all
   if((scalar @formats) == 0) {
-    @formats = ("sh", "csh", "zsh");
+    @formats = ("bash", "sh", "csh", "zsh");
   }
   
   script_toplevel @dirs, @formats, $cmdoptions{bg}, $cmdoptions{condbg}, $outputdir,
@@ -1857,7 +1968,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 26 2005-08-07 19:09:08Z geoffw $
+$Id: env-tool 27 2005-08-07 19:42:45Z geoffw $
 
 =head1 AUTHOR
 

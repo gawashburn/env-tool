@@ -3,6 +3,7 @@ test:
 	diff ref-sh ./dir2/.env-tool.sh
 	diff ref-csh ./dir2/.env-tool.csh
 	diff ref-zsh ./dir2/.env-tool.zsh
+	diff ref-bash ./dir2/.env-tool.bash
 
 clean:
 	$(RM) ./dir2/.*
