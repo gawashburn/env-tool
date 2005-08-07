@@ -1,6 +1,6 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 24 2005-08-07 00:23:55Z geoffw $
+        env-tool to-do list $Id: .todo 25 2005-08-07 01:29:25Z geoffw $
     </title>
     <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
@@ -28,5 +28,14 @@
     </note>
     <note priority="medium" time="1123374198">
         Fix bg and conbg to only affect shell generation not cache.
+    </note>
+    <note priority="medium" time="1123375819">
+        Add ignores for things like .snapshot .svn dirs by default.
+    </note>
+    <note priority="medium" time="1123378107">
+        Optimized bash output.
+    </note>
+    <note priority="medium" time="1123378151">
+        Optimized tcsh output.
     </note>
 </todo>
