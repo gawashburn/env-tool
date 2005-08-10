@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 33 2005-08-10 14:30:34Z geoffw $
+# env-tool $Id: env-tool 34 2005-08-10 17:53:08Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -1186,12 +1186,12 @@ case "\${(P)1}" in
 esac
 }
 extend_env_list () { 
-  for ext in \$2
+  for ext in \$@[4,-1]
   do
-    extend_env \$1 \$ext \$3 \$4
+    extend_env \$1 \$ext \$2 \$3
   done
 }
-
+setopt SH_GLOB
 
 END
 
@@ -1239,8 +1239,7 @@ sub gen_cond_var_zsh ($$$$$) {
   my $debug_string = undef;
   if($safe) { $safe_string = "true"; } else { $safe_string = "false" } 
   if($debug) { $debug_string = "true"; } else { $debug_string = "false" } 
-  $result .="    TEMPARRAY=( " . (join(' ', map { "\"$_\"" } @$additions_array)) . " );\n";
-  $result .="    extend_env_list $variable \"\$TEMPARRAY\" $safe_string $debug_string;\n";
+  $result .="    extend_env_list $variable $safe_string $debug_string " . (join(' ', map { "\"$_\"" } @$additions_array)) . ";\n";
   $result .= ";;\nesac\n";
   
   return $result;
@@ -1972,7 +1971,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 33 2005-08-10 14:30:34Z geoffw $
+$Id: env-tool 34 2005-08-10 17:53:08Z geoffw $
 
 =head1 AUTHOR
 
