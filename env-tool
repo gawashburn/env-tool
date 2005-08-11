@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 36 2005-08-11 02:39:28Z geoffw $
+# env-tool $Id: env-tool 37 2005-08-11 03:01:55Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -38,6 +38,9 @@ use Getopt::Long;
 
 # Need to be able to obtain the current directory to set variables
 use Cwd;
+
+# Use data dumper for printing Perl structures
+use Data::Dumper;
 
 ##############################################################################
 
@@ -180,6 +183,7 @@ sub should_ignore_dir ($$) {
   my $dir = shift;
   my $ignores_tmp = shift;
   my @ignores = undef;
+
 
   if(defined $ignores_tmp) { 
     @ignores = @{$ignores_tmp};
@@ -1985,7 +1989,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 36 2005-08-11 02:39:28Z geoffw $
+$Id: env-tool 37 2005-08-11 03:01:55Z geoffw $
 
 =head1 AUTHOR
 
