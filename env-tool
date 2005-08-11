@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 34 2005-08-10 17:53:08Z geoffw $
+# env-tool $Id: env-tool 35 2005-08-11 02:36:45Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -207,6 +207,7 @@ sub add_alias_entry ($$$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for alias $name.");
     if(!(exists $directories{$dir}{"alias"})) {
         @{$directories{$dir}{"alias"}} = ({"name" => $name, "value" => $value});
     } else {
@@ -223,6 +224,7 @@ sub add_relative_alias_entry ($$$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for relative alias $name.");
     if(!(exists $directories{$dir}{"relative-alias"})) {
         @{$directories{$dir}{"relative-alias"}} = ({"name" => $name, "value" => $value});
     } else {
@@ -238,6 +240,7 @@ sub add_variable_entry ($$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for variable $name.");
     if(!(exists $directories{$dir}{"variable"})) {
         @{$directories{$dir}{"variable"}} = ({"name" => $name});
     } else {
@@ -254,6 +257,7 @@ sub add_variable_body_entry ($$$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for variable $name.");
     if(!(exists $directories{$dir}{"variable"})) {
         @{$directories{$dir}{"variable"}} = ({"name" => $name, "body" => $body});
     } else {
@@ -270,6 +274,7 @@ sub add_absolute_variable_entry ($$$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for absolute variable $name.");
     if(!(exists $directories{$dir}{"absolute-variable"})) {
         @{$directories{$dir}{"absolute-variable"}} = ({"name" => $name, "body" => $body});
     } else {
@@ -285,6 +290,7 @@ sub add_kpathsea_variable_entry ($$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for kpathsea variable $name.");
     if(!(exists $directories{$dir}{"kpathsea-variable"})) {
         @{$directories{$dir}{"kpathsea-variable"}} = ({"name" => $name});
     } else {
@@ -301,6 +307,7 @@ sub add_kpathsea_variable_body_entry ($$$$) {
   my $ignores = shift;
     
   if(!(should_ignore_dir($dir, $ignores))) {
+    verbosemsg("Ignoring directory $dir for kpathsea variable $name.");
     if(!(exists $directories{$dir}{"kpathsea-variable"})) {
         @{$directories{$dir}{"kpathsea-variable"}} = ({"name" => $name, "body" => $body});
     } else {
@@ -1971,7 +1978,7 @@ run as specified, but do not write output to a file.
 
 =head1 VERSION
 
-$Id: env-tool 34 2005-08-10 17:53:08Z geoffw $
+$Id: env-tool 35 2005-08-11 02:36:45Z geoffw $
 
 =head1 AUTHOR
 
