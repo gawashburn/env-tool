@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 37 2005-08-11 03:01:55Z geoffw $
+# env-tool $Id: env-tool 38 2005-08-11 03:22:21Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -626,7 +626,7 @@ sub process_file ($$$) {
   open(XML, $file);
   my @temp = <XML>;
   close XML; 
-  &process_config($dir,"@temp",$ignores);
+  process_config $dir, "@temp", $ignores;
 }
 
 ##############################################################################
@@ -848,10 +848,16 @@ Usage: env-tool [-h|--help] [--verbose] [--outputdir dir]
                 [--ignorecache] [--bg|--condbg] [--safe] [--debug] 
                 [--cache] [directories ...]
 
-Scan the specified directories and their children for environment
-configuation files, and atomically create outputdir/.env-tool.{csh,sh,zsh} 
-files as specified.  If no directories are specified scan the current 
-directory.
+env-tool's default mode of operation is script generation.  env-tool will
+scan the specified directories, or the current if none were specified,
+and their children for environment configuation files.  env-tool will
+then atomically create outputdir/.env-tool.{bash,csh,sh,zsh} depending
+upon the supplied options.  If no specific shell format was specified, all
+will be generated.
+
+env-tool also has a cache file generation mode that will scan directories and 
+produce an environment configuration file that simulates the result of scanning
+the specified directory trees.  
 
    Universal options:
 
@@ -868,21 +874,21 @@ directory.
                           the search.  May be used any number of times.
         
         --lock            force locking so that only one instance can
-                          operate at a time. creates a lockfile 
+                          operate at a time.  Creates a lockfile 
                           outputdir/.env-tool.lock
          
    Shell script generation options:
    
-        --sh              only create outputdir/.env-tool.sh, a script for 
+        --sh              create outputdir/.env-tool.sh, a script for 
                           Bourne descended shells
                       
-        --csh             only create outputdir/.env-tool.csh, a script for 
+        --csh             create outputdir/.env-tool.csh, a script for 
                           C-Shell descended shells
                       
-        --zsh             only create outputdir/.env-tool.zsh, a script for 
+        --zsh             create outputdir/.env-tool.zsh, a script for 
                           optimized for Z-Shell
         
-        --bash            only create outputdir/.env-tool.zsh, a script for 
+        --bash            create outputdir/.env-tool.zsh, a script for 
                           optimized for the Bourne Again Shell
                       
         --bg              run in the background. Only one instance of 
@@ -1805,21 +1811,35 @@ env-tool - a tool for constructing a script to set up a user's environment
 
 =head1 SYNOPSIS
 
-B<env-tool> [B<-h>|B<--help>] [B<--sh>] [B<--csh>] [B<--zsh>] 
-[B<--ignores> re]
+B<env-tool> [B<-h>|B<--help>] [B<--verbose>] [B<--ouputdir> dir]
 
-[B<--lock>] [B<--bg>|B<--condbg>] [B<--safe>] 
-[B<--debug>] [B<--test>] [directories...]
+[B<--ignores> re] [B<--lock>] [B<--test>] 
+
+[B<--sh>] [B<--csh>] [B<--zsh>] [B<--bash>]
+
+[B<--ignorecache>] [B<--bg>|B<--condbg>] [B<--safe>] [B<--debug>]  
+
+[B<--cache>] [directories...]
 
 =head1 DESCRIPTION
 
-Scan the specified directories and their children for environment
-configuration files, and atomically create ~/.env-tool.sh,
-~/.env-tool.csh, and ~/.env-tool.zsh files as specified.  If no
-directories are specified the current directory is searched.  Environment
-configuration files are XML documents named .env-config.xml containing
-some number of variable definitions.  If a directory contains a file
-named .env-config-ignore, it and its subdirectories are ignored.
+env-tool's default mode of operation is script generation.  env-tool will
+scan the specified directories, or the current if none were specified,
+and their children for environment configuation files.  env-tool will
+then atomically create outputdir/.env-tool.{bash,csh,sh,zsh} depending
+upon the supplied options.  If no specific shell format was specified, all
+will be generated.
+
+env-tool also has a cache file generation mode that will scan directories and 
+produce an environment configuration file that simulates the result of scanning
+the specified directory trees.  
+
+Environment configuration files are XML documents named either
+.env-config.xml or .env-cache.xml and containing some number of alias
+and environment variable definitions.  If a directory contains a file
+named .env-config-ignore, it and its subdirectories are ignored.  If a
+directory contains a .env-cache.xml file, the file is read but its
+subdirectories are ignored.
 
 A possible csh-style shell configuration to use env-tool might look
 like the following lines added to one's .cshrc file:
@@ -1863,7 +1883,7 @@ and this line in your .zshenv file:
   [ -r "${HOME}/.env-tool.zsh" ] && . "${HOME}/.env-tool.zsh"
 
 
-A possible .env-config.xml file might look like:
+A possible .env-config.xml or .env-cache.xml file might look like:
 
   <?xml version="1.0" encoding="UTF-8"?>
   <env-config version="1.2">
@@ -1922,7 +1942,7 @@ A possible .env-config.xml file might look like:
          kpathsea-variable. -->
     <kpathsea-variable name="FOOINPUTS">//</kpathsea-variable>
     
-    <!-- It is also possible to override the name of the current directory
+    <!-- It is possible to override the name of the current directory
          using a directory tag.  Directory tags may not be nested.  This
          is mostly useful for building cache files. -->
     <directory name="/usr/local/bin"><variable name="PATH" /></directory>
@@ -1937,21 +1957,29 @@ The options are:
 
 print usage information
 
+=item [B<--verbose>]
+
+prints detailed information about the actions of env-tool to standard error. 
+
 =item B<--outputdir> dir
 
-create files in this directory rather than in ~/. 
+create output files in the specified directory rather than in ~/. 
 
 =item B<--sh>
 
-only create ~/.env-tool.sh, a script for Bourne descended shells
+create outputdir/.env-tool.sh, a script for Bourne descended shells
 
 =item B<--csh>
 
-only create ~/.env-tool.csh, a script for C-Shell descended shells
+create outputdir/.env-tool.csh, a script for C-Shell descended shells
 
 =item B<--zsh>
 
-only create ~/.env-tool.zsh, a script optimized for Z shell
+create outputdir/.env-tool.zsh, a script optimized for Z shell
+
+=item B<--bash>
+
+create outputdir/.env-tool.bash, a script optimized for the Bourne Again Shell
 
 =item B<--ignores> re
 
@@ -1959,18 +1987,19 @@ prune the specified regular expression from the search.  May be used any number 
 
 =item B<--lock>
 
-force locking to avoid multiple instances of env-tool from running simultaneously.
-Creates a file ~/.env-tool.lock that in rare circumstances can be accidentally
-left behind if the process is killed in an unforeseen fashion.
+force locking to avoid multiple instances of env-tool from running
+simultaneously.  Creates a file outputdir/.env-tool.lock that in rare
+circumstances can be accidentally left behind if the process is killed
+in an unforeseen fashion.
 
 =item B<--bg>
 
-run in the background.  Only one env-tool process may run at a time if 
---lock is used.
+run in the background during script generation.  
+Only one env-tool process may run at a time if --lock is used.
 
 =item B<--condbg>
 
-run in the background if ~/.env-tool.sh, ~/.env-tool.csh, ~/.env-tool.zsh 
+run in the background during script generation if outputdir/.env-tool.{bas,csh,sh,zsh}
 already exist.  Only one env-tool process may run at a time --lock is used.
 
 =item B<--safe>
@@ -1987,9 +2016,18 @@ the shell code produce will print debugging information about its actions.
 
 run as specified, but do not write output to a file.
 
+=item B<--ignorecache>
+
+during script generation ignore .env-cache.xml cache files.  During cache
+generation cache files are alway ignored.
+
+=item B<--cache>
+
+specify cache generation mode.
+
 =head1 VERSION
 
-$Id: env-tool 37 2005-08-11 03:01:55Z geoffw $
+$Id: env-tool 38 2005-08-11 03:22:21Z geoffw $
 
 =head1 AUTHOR
 

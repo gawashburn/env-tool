@@ -1,11 +1,17 @@
 <todo version="0.1.19">
     <title>
-        env-tool to-do list $Id: .todo 28 2005-08-07 19:43:05Z geoffw $
+        env-tool to-do list $Id: .todo 38 2005-08-11 03:22:21Z geoffw $
     </title>
     <note priority="veryhigh" time="1122925452" done="1123101768">
         Add caching support.
         <comment>
             Initial caching support implemented.  Needs more testing however.
+        </comment>
+    </note>
+    <note priority="medium" time="1122925443" done="1123729545">
+        Add unit tests?
+        <comment>
+            Started.
         </comment>
     </note>
     <note priority="medium" time="1122925473" done="1123441172">
@@ -32,22 +38,25 @@
             Done.
         </comment>
     </note>
-    <note priority="medium" time="1122925391">
-        Write more documentation.
-    </note>
-    <note priority="medium" time="1122925443">
-        Add unit tests?
-    </note>
-    <note priority="medium" time="1123374198">
-        Fix bg and conbg to only affect shell generation not cache.
-    </note>
     <note priority="medium" time="1123378107" done="1123443774">
         Optimized bash output.
         <comment>
             Done.
         </comment>
     </note>
+    <note priority="medium" time="1122925391">
+        Write more documentation.
+    </note>
+    <note priority="medium" time="1123374198" done="1123729572">
+        Fix bg and conbg to only affect shell generation not cache.
+        <comment>
+            Done.
+        </comment>
+    </note>
     <note priority="medium" time="1123378151">
         Optimized tcsh output.
+    </note>
+    <note priority="medium" time="1123729563">
+        Write more unit tests.
     </note>
 </todo>
