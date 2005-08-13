@@ -4,7 +4,7 @@ exec perl -S -x -- "$0" "$@"
 # -*- perl -*-
 # vim:ft=perl:
 
-# env-tool $Id: env-tool 38 2005-08-11 03:22:21Z geoffw $
+# env-tool $Id: env-tool 39 2005-08-13 17:44:21Z geoffw $
 # Copyright Geoffrey Alan Washburn, 2005.
 # Some parts copyright Trustees of Boston University, 2002.
 # Some parts copyright Joe B Wells, 2002.
@@ -613,21 +613,6 @@ sub build_environment_variable_defs () {
   return %table;
 }
 
-##############################################################################
-sub process_file ($$$) {
-  my $dir = shift;
-  # Check that it is actually a directory
-  if(!(-d $dir)) {
-    die "process_file: directory argument \"$dir\" is not a directory!";
-  }
-  my $file = shift;
-  my $ignores = shift;
-  
-  open(XML, $file);
-  my @temp = <XML>;
-  close XML; 
-  process_config $dir, "@temp", $ignores;
-}
 
 ##############################################################################
 
@@ -834,6 +819,22 @@ sub process_config ($$$) {
   # Parse the configuation file
   $parser->parse($xml);
 
+}
+
+##############################################################################
+sub process_file ($$$) {
+  my $dir = shift;
+  # Check that it is actually a directory
+  if(!(-d $dir)) {
+    die "process_file: directory argument \"$dir\" is not a directory!";
+  }
+  my $file = shift;
+  my $ignores = shift;
+  
+  open(XML, $file);
+  my @temp = <XML>;
+  close XML; 
+  process_config $dir, "@temp", $ignores;
 }
 
 
@@ -2027,7 +2028,7 @@ specify cache generation mode.
 
 =head1 VERSION
 
-$Id: env-tool 38 2005-08-11 03:22:21Z geoffw $
+$Id: env-tool 39 2005-08-13 17:44:21Z geoffw $
 
 =head1 AUTHOR
 
