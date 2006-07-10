@@ -55,9 +55,9 @@ my @TEXINPUTS_like = ("TEXINPUTS", "DVIPSHEADERS", "BSTINPUTS",
                       "BIBINPUTS", "AFMFONTS", "MFBASES",
                       "TEXBIB", "TEXCONFIG", "TEXFORMATS",
                       "TEXINDEXSTYLE", "TEXFONTMAPS", "MFINPUTS",
-                      "TEXFONTS", "T1FONTS", "TTFONTS",
+                      "TEXFONTS", "T1FONTS", "T1INPUTS", "TTFONTS",
                       "VFFONTS", "XDVIFONTS", "GLYPHFONTS",
-                      "ENCFONTS", "TEXPSHEADERS");
+                      "ENCFONTS", "TEXPSHEADERS", "TFMFONTS");
 
 # By default don't traverse into these directories
 my @default_dir_ignores = (".svn", ".snapshot");
